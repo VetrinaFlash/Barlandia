@@ -1,8 +1,8 @@
 # Auto-deploy del Worker realtime (RoomDO) su push.
 #
-# Cloudflare Pages fa l'auto-deploy dell'app web via Git integration
-# (si collega dalla dashboard, non serve workflow). Il Worker separato
-# invece qui: richiede due secret nel repo GitHub
+# L'app web ha il proprio workflow gemello (deploy-web.yml) — entrambe le
+# app sono Cloudflare Worker deployati via wrangler-action, non più Pages.
+# Richiede due secret nel repo GitHub
 # (Settings → Secrets and variables → Actions):
 #   CLOUDFLARE_API_TOKEN    token con permesso "Edit Cloudflare Workers"
 #   CLOUDFLARE_ACCOUNT_ID   Account ID (dashboard Cloudflare, sidebar destra)

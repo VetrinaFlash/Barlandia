@@ -1,8 +1,6 @@
 import { AUTH, signToken } from '@barlandia/shared';
 import { env, json, requireUser } from '@/lib/server';
 
-export const runtime = 'edge';
-
 /**
  * Rilascia un token a vita breve (60s) per aprire il WebSocket verso il
  * worker realtime. Il client non parla mai col Durable Object: il worker

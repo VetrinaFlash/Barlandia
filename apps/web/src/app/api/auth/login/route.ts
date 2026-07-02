@@ -7,8 +7,6 @@ import {
   sessionCookieHeader,
 } from '@/lib/server';
 
-export const runtime = 'edge';
-
 export async function POST(request: Request): Promise<Response> {
   let body: { email?: unknown; password?: unknown };
   try {

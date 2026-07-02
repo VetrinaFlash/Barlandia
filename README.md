@@ -4,18 +4,22 @@ Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un
 
 **Fuori scope in questa fase** (previsto in fasi successive): trading tra utenti, valuta a pagamento, rarità/drop, più ambienti, minigiochi, amici/badge.
 
-**Stack**: Next.js 15 (Cloudflare Pages via next-on-pages) · Cloudflare Workers · Durable Objects (WebSocket Hibernation) · D1 · PixiJS 8.
+**Stack**: Next.js 15 (Cloudflare Workers via OpenNext) · Durable Objects (WebSocket Hibernation) · D1 · PixiJS 8.
+
+> **Nota storica**: la prima versione di questo repo deployava l'app web su Cloudflare Pages con `@cloudflare/next-on-pages`. È stata migrata a **Cloudflare Workers via `@opennextjs/cloudflare`** perché next-on-pages è deprecato e il suo peer-range blocca Next.js a `<=15.5.2` — versione affetta da una RCE pre-autenticazione critica (**CVE-2025-66478**, CVSS 10.0) che colpisce esattamente le app App Router come questa. Dettagli in fondo alla sezione Deploy.
 
 ---
 
 ## Struttura del repo
 
 ```
-apps/web         App Next.js (UI, auth, API shop/valuta) → Cloudflare Pages
+apps/web         App Next.js (UI, auth, API shop/valuta) → Cloudflare Workers (OpenNext)
 apps/realtime    Worker + RoomDO (Durable Object della stanza) → Cloudflare Workers
 packages/shared  Protocollo WS, layout stanza, pathfinding, token, password, logica valuta
 migrations/      Migration D1 (schema completo Fase 1+2 + seed catalogo shop)
 ```
+
+Entrambe le app sono Worker Cloudflare distinti (`barlandia` per il web, `barlandia-realtime` per il realtime), deployati separatamente ma nello stesso account e sullo stesso D1.
 
 Il naming del progetto è sempre `barlandia` (worker `barlandia-realtime`, DB D1 `barlandia`, DO `room:barlandia`).
 
@@ -25,10 +29,10 @@ Il naming del progetto è sempre `barlandia` (worker `barlandia-realtime`, DB D1
 client (PixiJS + React)
    │  HTTPS (cookie di sessione firmato HMAC)
    ▼
-Cloudflare Pages (Next.js edge API)  ──────────► D1 (users, wallets, shop, inventory, tx)
+Worker "barlandia" — Next.js via OpenNext ────────► D1 (users, wallets, shop, inventory, tx)
    │  GET /api/rt-token → token firmato 60s          ▲
    ▼                                                 │
-Worker barlandia-realtime ── verifica token ──► RoomDO (hibernation WS)
+Worker "barlandia-realtime" ── verifica token ──► RoomDO (hibernation WS)
                                                  posizioni · chat · arredi · tick valuta
 ```
 
@@ -67,7 +71,9 @@ npm run dev:web
 
 Apri http://localhost:3000, registrati e sei nel bar. Per vedere il multiplayer apri una seconda finestra in incognito con un altro account.
 
-> Le due app condividono lo stesso D1 locale tramite la directory di persistenza `.wrangler/state` (il worker con `--persist-to`, Next tramite `setupDevPlatform({ persist })` in `next.config.mjs`). Se l'app web non vede le tabelle, hai saltato `npm run db:migrate:local`.
+> Le due app condividono lo stesso D1 locale tramite la directory di persistenza `.wrangler/state` (il worker con `--persist-to`, Next tramite `initOpenNextCloudflareForDev({ persist })` in `next.config.mjs`). Se l'app web non vede le tabelle, hai saltato `npm run db:migrate:local` — e se cambi `database_id` nei `wrangler.jsonc`/`wrangler.toml` **devi rilanciare** `npm run db:migrate:local`, perché la persistenza locale di Miniflare è indicizzata per `database_id`: un ID nuovo punta a un database locale vuoto anche se il nome è lo stesso.
+>
+> Per validare la build finale (quella che gira davvero su Cloudflare, non `next dev`): `cd apps/web && npm run preview` compila con OpenNext e la serve con `wrangler dev` — utile prima di un deploy importante, ma ricorda che gira su una porta diversa da 3000, quindi non è nell'`ALLOWED_ORIGINS` di default del worker realtime (aggiungila temporaneamente se ti serve testare il WebSocket da lì).
 
 ### Test
 
@@ -79,15 +85,17 @@ I test coprono i deliverable chiave: **2 client WebSocket simultanei** (join rec
 
 ## Deploy su Cloudflare
 
-Ci sono due pezzi da deployare separatamente: l'app web (**Cloudflare Pages**, si collega a Git e da lì in poi ogni push fa auto-deploy) e il worker realtime (**Cloudflare Workers**, auto-deploy via la GitHub Action già inclusa in `.github/workflows/`). Vanno fatti in quest'ordine perché il worker deve esistere prima che l'app web possa puntarci.
+Ci sono due Worker distinti da deployare, entrambi con lo **stesso meccanismo**: deploy manuale una tantum per farli esistere, poi auto-deploy a ogni push tramite le GitHub Action già incluse in `.github/workflows/`. Deploya prima il realtime, poi il web (il web ha bisogno dell'URL del realtime).
+
+> **Se avevi già collegato un progetto Cloudflare Pages** per questo repo (dashboard → Workers & Pages → Pages): **disconnettilo/eliminalo**. L'app web ora si deploya come Worker via GitHub Actions, non più via Pages Git integration — il vecchio progetto Pages non troverebbe più `pages_build_output_dir` nella configurazione e fallirebbe le build ogni volta.
 
 ### 0. Setup one-time (dal tuo terminale, con `wrangler login` fatto)
 
-Il database D1 si chiama **`barlandia`** ed è già creato (dashboard Cloudflare → Workers & Pages → D1); il suo `database_id` è già incollato in entrambi i `wrangler.toml`. Se in futuro lo ricrei da zero:
+Il database D1 si chiama **`barlandia`** ed è già creato (dashboard Cloudflare → Workers & Pages → D1); il suo `database_id` è già incollato in `apps/realtime/wrangler.toml` e `apps/web/wrangler.jsonc`. Se in futuro lo ricrei da zero:
 
 ```bash
 npx wrangler login                  # apre il browser, autorizza l'account Cloudflare
-npx wrangler d1 create barlandia    # stampa un database_id: aggiornalo nei due wrangler.toml
+npx wrangler d1 create barlandia    # stampa un database_id: aggiornalo in ENTRAMBI i file di config
 ```
 
 Applica lo schema al database remoto (va rifatto solo quando cambi le migration):
@@ -96,15 +104,20 @@ Applica lo schema al database remoto (va rifatto solo quando cambi le migration)
 npm run db:migrate:remote                # applica migrations/*.sql al D1 di produzione
 ```
 
-Genera un secret lungo e casuale per le sessioni (**deve essere identico** su worker e Pages):
+Genera un secret lungo e casuale per le sessioni (**deve essere identico** sui due Worker):
 
 ```bash
 openssl rand -base64 48                  # copia l'output, ti serve nei prossimi due comandi
 ```
 
-### 1. Worker realtime — deploy manuale iniziale + auto-deploy da CI
+Su GitHub, in *Settings → Secrets and variables → Actions* del repo, aggiungi i due secret che useranno **entrambi** i workflow di deploy:
 
-Il primo deploy va fatto a mano (il worker deve esistere prima che GitHub Actions possa aggiornarlo):
+| Secret | Da dove prenderlo |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | dashboard Cloudflare → *My Profile → API Tokens → Create Token* → template "Edit Cloudflare Workers" |
+| `CLOUDFLARE_ACCOUNT_ID` | dashboard Cloudflare, sidebar destra di qualunque pagina del tuo account |
+
+### 1. Worker realtime — deploy manuale iniziale, poi auto-deploy da CI
 
 ```bash
 cd apps/realtime
@@ -113,41 +126,40 @@ npx wrangler deploy
 cd ../..
 ```
 
-Aggiorna `ALLOWED_ORIGINS` in `apps/realtime/wrangler.toml` con i domini reali (es. `https://barlandia.it,https://www.barlandia.it`) e ricorda che ogni modifica a `wrangler.toml`/variabili non-secret richiede un nuovo deploy per essere applicata.
+Aggiorna `ALLOWED_ORIGINS` in `apps/realtime/wrangler.toml` con i domini reali (es. `https://barlandia.it,https://www.barlandia.it`) e rideploya se lo cambi dopo.
 
-**Per l'auto-deploy da push** (workflow già pronto in `.github/workflows/deploy-realtime.yml`): su GitHub, vai in *Settings → Secrets and variables → Actions* del repo e aggiungi:
+Da qui in poi, ogni push a `main` che tocchi `apps/realtime/`, `packages/shared/` o `migrations/` fa auto-deploy (workflow `deploy-realtime.yml`; se il tuo branch di produzione ha un altro nome, cambialo in cima al file). C'è anche `migrate-d1.yml`, **solo manuale** (Actions → *Migra D1 (produzione)* → *Run workflow*): usalo quando cambi lo schema, mai in automatico su ogni push.
 
-| Secret | Da dove prenderlo |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | dashboard Cloudflare → *My Profile → API Tokens → Create Token* → template "Edit Cloudflare Workers" (limita ad account e worker se possibile) |
-| `CLOUDFLARE_ACCOUNT_ID` | dashboard Cloudflare, sidebar destra di qualunque pagina del tuo account |
+### 2. App web — deploy manuale iniziale, poi auto-deploy da CI
 
-Il workflow gira su push a `main` che tocchi `apps/realtime/`, `packages/shared/` o `migrations/` (se il tuo branch di produzione ha un altro nome, cambialo in cima al file). C'è anche `migrate-d1.yml`, **solo manuale** (Actions → *Migra D1 (produzione)* → *Run workflow*): usalo quando cambi lo schema, mai in automatico su ogni push.
+Prima aggiorna `REALTIME_WS_URL` in `apps/web/wrangler.jsonc` con l'URL vero del worker appena deployato (es. `wss://barlandia-realtime.<tuo-account>.workers.dev`), poi:
 
-### 2. App web — Cloudflare Pages con Git integration (l'auto-deploy che ti serve)
+```bash
+cd apps/web
+npx wrangler secret put SESSION_SECRET   # STESSO valore messo nel worker realtime
+npm run deploy                            # build OpenNext + wrangler deploy
+cd ../..
+```
 
-Dalla dashboard Cloudflare: **Workers & Pages → Create → Pages → Connect to Git** → seleziona questo repository. Nella configurazione build:
-
-| Campo | Valore |
-|---|---|
-| Production branch | il tuo branch di produzione (es. `main`) |
-| Root directory | `apps/web` |
-| Build command | `npx @cloudflare/next-on-pages@1` |
-| Build output directory | `.vercel/output/static` |
-
-Cloudflare rileva automaticamente lo `npm workspace` alla radice del repo e installa da lì prima di buildare `apps/web` — non serve altro. Dopo il primo deploy, in *Settings* del progetto Pages:
-
-- **Environment variables**: aggiungi `REALTIME_WS_URL` = `wss://barlandia-realtime.<tuo-account>.workers.dev` (o il dominio custom del worker, es. `wss://rt.barlandia.it`, se lo configuri).
-- **Secrets**: aggiungi `SESSION_SECRET` = **lo stesso identico valore** messo nel worker al passo 1.
-- Se non vedi il binding D1 già preso da `wrangler.toml`, aggiungilo a mano in *Settings → Functions → D1 database bindings*: binding name `DB` → database `barlandia`.
-
-Da qui in poi **ogni push al branch di produzione fa auto-deploy** dell'app web. Le altre branch generano automaticamente un preview URL.
+Da qui in poi, ogni push a `main` che tocchi `apps/web/` o `packages/shared/` fa auto-deploy (workflow `deploy-web.yml`).
 
 ### 3. Domini
 
-Collega `barlandia.it` al progetto Pages (*Custom domains*) e, se vuoi un dominio pulito invece di `*.workers.dev`, aggiungi una route/dominio custom al worker (es. `rt.barlandia.it`) — poi aggiorna `REALTIME_WS_URL` di conseguenza e ridispiega l'app web.
+Sulla dashboard Cloudflare, apri il worker **`barlandia`** → *Settings → Domains & Routes → Add* → dominio personalizzato `barlandia.it` (e `www.barlandia.it` se vuoi). Se vuoi un dominio pulito anche per il realtime invece di `*.workers.dev` (es. `rt.barlandia.it`), fai lo stesso sul worker `barlandia-realtime` e aggiorna `REALTIME_WS_URL` di conseguenza, poi rideploya l'app web.
 
 La PWA è installabile out-of-the-box (manifest + service worker minimale + icone dalla mascotte; su iOS: Condividi → Aggiungi a Home).
+
+### Nota di sicurezza: perché non Cloudflare Pages + next-on-pages
+
+La prima versione di questo repo usava `@cloudflare/next-on-pages` per deployare su Cloudflare Pages. Durante la messa in produzione è emerso che:
+
+1. `@cloudflare/next-on-pages` è **deprecato** (Cloudflare stessa raccomanda l'adattatore OpenNext) e il suo `package.json` fissa `peerDependencies.next` a `>=14.3.0 && <=15.5.2`.
+2. **Next.js 15.5.2 è vulnerabile a CVE-2025-66478**: RCE pre-autenticazione, CVSS 10.0, nel protocollo React Server Components, sfruttabile con una singola richiesta HTTP malformata (multipart/form-data via header `Next-Action`). Colpisce esattamente le app **App Router** come questa; il fix richiede `>=15.5.7`.
+3. Non esiste quindi **nessuna versione** che soddisfi contemporaneamente "compatibile con next-on-pages" e "patchata" — sono due vincoli mutuamente esclusivi (`<=15.5.2` vs `>=15.5.7`).
+
+Per questo l'app è stata migrata a **`@opennextjs/cloudflare`**, che deploya su Cloudflare Workers (non più Pages) e supporta Next.js aggiornato. Versione installata: **15.5.20** (patchata contro questa e altre advisory più recenti — verificato con `npm audit` che nessun range vulnerabile della famiglia `next` include questa versione). Il cambio ha richiesto anche di rimuovere `export const runtime = 'edge'` dalle route (OpenNext esegue Next in modalità Node.js-compatibile su Workers via `nodejs_compat`, non nell'edge runtime che serviva a next-on-pages).
+
+**Compromesso dichiarato**: la cache incrementale di Next (ISR) non è configurata (nessun binding R2/KV in `wrangler.jsonc`) perché nessuna pagina di questa fase usa `revalidate` — `/login` e `/bar` sono statiche senza dati lato server. Se in futuro si aggiunge ISR, va configurato un binding R2 e l'override in `apps/web/open-next.config.ts` (vedi commento nel file).
 
 ## Valuta e shop — invarianti e note di audit
 

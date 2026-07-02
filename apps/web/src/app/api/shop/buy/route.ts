@@ -1,8 +1,6 @@
 import { purchaseItem } from '@barlandia/shared';
 import { env, errorJson, json, requireUser } from '@/lib/server';
 
-export const runtime = 'edge';
-
 /**
  * Acquisto: la validazione del saldo e la scrittura di wallet +
  * transazione + inventario avvengono in un'unica transazione atomica

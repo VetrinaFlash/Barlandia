@@ -1,0 +1,54 @@
+# Auto-deploy dell'app web su push.
+#
+# L'app web è deployata come Cloudflare Worker via OpenNext (non più
+# Cloudflare Pages: next-on-pages è deprecato e cappa Next.js a una
+# versione con una RCE nota, CVE-2025-66478 — vedi README). Se avevi
+# collegato un progetto Cloudflare Pages per questo repo, disconnettilo:
+# non verrà più usato.
+#
+# Richiede gli stessi due secret di deploy-realtime.yml, nel repo GitHub
+# (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN    token con permesso "Edit Cloudflare Workers"
+#   CLOUDFLARE_ACCOUNT_ID   Account ID (dashboard Cloudflare, sidebar destra)
+#
+# Se il branch di produzione non è `main`, aggiorna il trigger sotto.
+
+name: Deploy app web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Build (Next.js + adattamento OpenNext per Cloudflare)
+        working-directory: apps/web
+        run: npm run cf:build
+        env:
+          # SESSION_SECRET non serve in build (solo a runtime), ma next build
+          # valuta i moduli server: teniamo l'env pulito, i secret veri sono
+          # nel Worker via `wrangler secret put`.
+          NODE_ENV: production
+
+      - name: Deploy su Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: deploy

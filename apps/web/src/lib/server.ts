@@ -1,14 +1,14 @@
 /**
- * Helper server-side (edge runtime) per le API route Next.js.
- * Tutte le route girano sull'edge di Cloudflare e accedono ai binding
- * (D1, secrets) via getRequestContext di next-on-pages.
+ * Helper server-side per le API route Next.js.
+ * Le route girano su Cloudflare Workers (via OpenNext) e accedono ai
+ * binding (D1, secrets) tramite getCloudflareContext.
  */
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { cookies } from 'next/headers';
 import { AUTH, signToken, verifyToken, type TokenPayload } from '@barlandia/shared';
 
 export function env(): CloudflareEnv {
-  return getRequestContext().env;
+  return getCloudflareContext().env;
 }
 
 export interface SessionUser {

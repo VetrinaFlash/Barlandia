@@ -15,8 +15,6 @@ import {
 } from '@/lib/server';
 import { AUTH } from '@barlandia/shared';
 
-export const runtime = 'edge';
-
 const USERNAME_RE = /^[a-z0-9_]+$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

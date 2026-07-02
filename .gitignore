@@ -1,8 +1,9 @@
 # dependencies
 node_modules/
 
-# next.js / next-on-pages
+# next.js / opennext
 apps/web/.next/
+apps/web/.open-next/
 apps/web/.vercel/
 apps/web/out/
 
