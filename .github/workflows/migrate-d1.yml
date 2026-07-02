@@ -1,0 +1,29 @@
+# Applica le migration D1 al database REMOTO di produzione.
+# Trigger SOLO manuale (Actions → "Migra D1 (produzione)" → Run workflow):
+# le migration di schema non devono scattare da sole a ogni push.
+# Richiede gli stessi secret di deploy-realtime.yml.
+
+name: Migra D1 (produzione)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Applica migration su barlandia-db (remoto)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/realtime
+          command: d1 migrations apply barlandia-db --remote

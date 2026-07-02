@@ -79,10 +79,71 @@ I test coprono i deliverable chiave: **2 client WebSocket simultanei** (join rec
 
 ## Deploy su Cloudflare
 
-1. **D1**: `wrangler d1 create barlandia-db` → copia l'id nei due `wrangler.toml` (`database_id`), poi `npm run db:migrate:remote`.
-2. **Worker realtime**: in `apps/realtime`: `wrangler secret put SESSION_SECRET` (valore lungo e casuale), poi `npm run deploy -w apps/realtime`. Aggiorna `ALLOWED_ORIGINS` nel `wrangler.toml` con i domini reali.
-3. **Pages**: in `apps/web`: aggiorna `REALTIME_WS_URL` (es. `wss://barlandia-realtime.<account>.workers.dev` o dominio custom `wss://rt.barlandia.it`), `wrangler pages secret put SESSION_SECRET` (STESSO valore del worker), poi `npm run deploy -w apps/web`.
-4. Collega `barlandia.it` al progetto Pages e (opzionale) `rt.barlandia.it` al worker.
+Ci sono due pezzi da deployare separatamente: l'app web (**Cloudflare Pages**, si collega a Git e da lì in poi ogni push fa auto-deploy) e il worker realtime (**Cloudflare Workers**, auto-deploy via la GitHub Action già inclusa in `.github/workflows/`). Vanno fatti in quest'ordine perché il worker deve esistere prima che l'app web possa puntarci.
+
+### 0. Setup one-time (dal tuo terminale, con `wrangler login` fatto)
+
+```bash
+npx wrangler login                       # apre il browser, autorizza l'account Cloudflare
+npx wrangler d1 create barlandia-db      # stampa un database_id: copialo
+```
+
+Incolla il `database_id` ottenuto in **entrambi** i file `wrangler.toml` (`apps/realtime/wrangler.toml` e `apps/web/wrangler.toml`, campo `database_id` sotto `[[d1_databases]]`), poi:
+
+```bash
+npm run db:migrate:remote                # applica migrations/*.sql al D1 di produzione
+```
+
+Genera un secret lungo e casuale per le sessioni (**deve essere identico** su worker e Pages):
+
+```bash
+openssl rand -base64 48                  # copia l'output, ti serve nei prossimi due comandi
+```
+
+### 1. Worker realtime — deploy manuale iniziale + auto-deploy da CI
+
+Il primo deploy va fatto a mano (il worker deve esistere prima che GitHub Actions possa aggiornarlo):
+
+```bash
+cd apps/realtime
+npx wrangler secret put SESSION_SECRET   # incolla il secret generato sopra
+npx wrangler deploy
+cd ../..
+```
+
+Aggiorna `ALLOWED_ORIGINS` in `apps/realtime/wrangler.toml` con i domini reali (es. `https://barlandia.it,https://www.barlandia.it`) e ricorda che ogni modifica a `wrangler.toml`/variabili non-secret richiede un nuovo deploy per essere applicata.
+
+**Per l'auto-deploy da push** (workflow già pronto in `.github/workflows/deploy-realtime.yml`): su GitHub, vai in *Settings → Secrets and variables → Actions* del repo e aggiungi:
+
+| Secret | Da dove prenderlo |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | dashboard Cloudflare → *My Profile → API Tokens → Create Token* → template "Edit Cloudflare Workers" (limita ad account e worker se possibile) |
+| `CLOUDFLARE_ACCOUNT_ID` | dashboard Cloudflare, sidebar destra di qualunque pagina del tuo account |
+
+Il workflow gira su push a `main` che tocchi `apps/realtime/`, `packages/shared/` o `migrations/` (se il tuo branch di produzione ha un altro nome, cambialo in cima al file). C'è anche `migrate-d1.yml`, **solo manuale** (Actions → *Migra D1 (produzione)* → *Run workflow*): usalo quando cambi lo schema, mai in automatico su ogni push.
+
+### 2. App web — Cloudflare Pages con Git integration (l'auto-deploy che ti serve)
+
+Dalla dashboard Cloudflare: **Workers & Pages → Create → Pages → Connect to Git** → seleziona questo repository. Nella configurazione build:
+
+| Campo | Valore |
+|---|---|
+| Production branch | il tuo branch di produzione (es. `main`) |
+| Root directory | `apps/web` |
+| Build command | `npx @cloudflare/next-on-pages@1` |
+| Build output directory | `.vercel/output/static` |
+
+Cloudflare rileva automaticamente lo `npm workspace` alla radice del repo e installa da lì prima di buildare `apps/web` — non serve altro. Dopo il primo deploy, in *Settings* del progetto Pages:
+
+- **Environment variables**: aggiungi `REALTIME_WS_URL` = `wss://barlandia-realtime.<tuo-account>.workers.dev` (o il dominio custom del worker, es. `wss://rt.barlandia.it`, se lo configuri).
+- **Secrets**: aggiungi `SESSION_SECRET` = **lo stesso identico valore** messo nel worker al passo 1.
+- Se non vedi il binding D1 già preso da `wrangler.toml`, aggiungilo a mano in *Settings → Functions → D1 database bindings*: binding name `DB` → database `barlandia-db`.
+
+Da qui in poi **ogni push al branch di produzione fa auto-deploy** dell'app web. Le altre branch generano automaticamente un preview URL.
+
+### 3. Domini
+
+Collega `barlandia.it` al progetto Pages (*Custom domains*) e, se vuoi un dominio pulito invece di `*.workers.dev`, aggiungi una route/dominio custom al worker (es. `rt.barlandia.it`) — poi aggiorna `REALTIME_WS_URL` di conseguenza e ridispiega l'app web.
 
 La PWA è installabile out-of-the-box (manifest + service worker minimale + icone dalla mascotte; su iOS: Condividi → Aggiungi a Home).
 

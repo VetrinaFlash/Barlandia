@@ -1,0 +1,42 @@
+# Auto-deploy del Worker realtime (RoomDO) su push.
+#
+# Cloudflare Pages fa l'auto-deploy dell'app web via Git integration
+# (si collega dalla dashboard, non serve workflow). Il Worker separato
+# invece qui: richiede due secret nel repo GitHub
+# (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN    token con permesso "Edit Cloudflare Workers"
+#   CLOUDFLARE_ACCOUNT_ID   Account ID (dashboard Cloudflare, sidebar destra)
+#
+# Se il branch di produzione non è `main`, aggiorna il trigger sotto.
+
+name: Deploy realtime worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/realtime/**'
+      - 'packages/shared/**'
+      - 'migrations/**'
+      - '.github/workflows/deploy-realtime.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Deploy su Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/realtime
+          command: deploy
