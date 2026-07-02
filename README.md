@@ -17,7 +17,7 @@ packages/shared  Protocollo WS, layout stanza, pathfinding, token, password, log
 migrations/      Migration D1 (schema completo Fase 1+2 + seed catalogo shop)
 ```
 
-Il naming del progetto è sempre `barlandia` (worker `barlandia-realtime`, DB `barlandia-db`, DO `room:barlandia`).
+Il naming del progetto è sempre `barlandia` (worker `barlandia-realtime`, DB D1 `barlandia`, DO `room:barlandia`).
 
 ## Architettura in breve
 
@@ -83,12 +83,14 @@ Ci sono due pezzi da deployare separatamente: l'app web (**Cloudflare Pages**, s
 
 ### 0. Setup one-time (dal tuo terminale, con `wrangler login` fatto)
 
+Il database D1 si chiama **`barlandia`** ed è già creato (dashboard Cloudflare → Workers & Pages → D1); il suo `database_id` è già incollato in entrambi i `wrangler.toml`. Se in futuro lo ricrei da zero:
+
 ```bash
-npx wrangler login                       # apre il browser, autorizza l'account Cloudflare
-npx wrangler d1 create barlandia-db      # stampa un database_id: copialo
+npx wrangler login                  # apre il browser, autorizza l'account Cloudflare
+npx wrangler d1 create barlandia    # stampa un database_id: aggiornalo nei due wrangler.toml
 ```
 
-Incolla il `database_id` ottenuto in **entrambi** i file `wrangler.toml` (`apps/realtime/wrangler.toml` e `apps/web/wrangler.toml`, campo `database_id` sotto `[[d1_databases]]`), poi:
+Applica lo schema al database remoto (va rifatto solo quando cambi le migration):
 
 ```bash
 npm run db:migrate:remote                # applica migrations/*.sql al D1 di produzione
@@ -137,7 +139,7 @@ Cloudflare rileva automaticamente lo `npm workspace` alla radice del repo e inst
 
 - **Environment variables**: aggiungi `REALTIME_WS_URL` = `wss://barlandia-realtime.<tuo-account>.workers.dev` (o il dominio custom del worker, es. `wss://rt.barlandia.it`, se lo configuri).
 - **Secrets**: aggiungi `SESSION_SECRET` = **lo stesso identico valore** messo nel worker al passo 1.
-- Se non vedi il binding D1 già preso da `wrangler.toml`, aggiungilo a mano in *Settings → Functions → D1 database bindings*: binding name `DB` → database `barlandia-db`.
+- Se non vedi il binding D1 già preso da `wrangler.toml`, aggiungilo a mano in *Settings → Functions → D1 database bindings*: binding name `DB` → database `barlandia`.
 
 Da qui in poi **ogni push al branch di produzione fa auto-deploy** dell'app web. Le altre branch generano automaticamente un preview URL.
 

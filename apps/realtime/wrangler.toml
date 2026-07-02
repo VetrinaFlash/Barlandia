@@ -16,8 +16,8 @@ new_sqlite_classes = ["RoomDO"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "barlandia-db"
-database_id = "SOSTITUIRE_CON_ID_D1"  # wrangler d1 create barlandia-db
+database_name = "barlandia"
+database_id = "e70433dd-ac81-4cc7-897b-fcc51b37cb20"
 migrations_dir = "../../migrations"
 
 [vars]

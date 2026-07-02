@@ -8,8 +8,8 @@ pages_build_output_dir = ".vercel/output/static"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "barlandia-db"
-database_id = "SOSTITUIRE_CON_ID_D1"  # stesso database del worker realtime
+database_name = "barlandia"
+database_id = "e70433dd-ac81-4cc7-897b-fcc51b37cb20"  # stesso database del worker realtime
 migrations_dir = "../../migrations"
 
 [vars]

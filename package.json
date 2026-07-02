@@ -13,8 +13,8 @@
     "build": "npm run build --workspace apps/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "db:migrate:local": "wrangler d1 migrations apply barlandia-db --local --config apps/realtime/wrangler.toml --persist-to .wrangler/state",
-    "db:migrate:remote": "wrangler d1 migrations apply barlandia-db --remote --config apps/realtime/wrangler.toml"
+    "db:migrate:local": "wrangler d1 migrations apply barlandia --local --config apps/realtime/wrangler.toml --persist-to .wrangler/state",
+    "db:migrate:remote": "wrangler d1 migrations apply barlandia --remote --config apps/realtime/wrangler.toml"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
