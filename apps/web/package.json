@@ -1,0 +1,30 @@
+{
+  "name": "@barlandia/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "preview": "npm run pages:build && wrangler pages dev --persist-to ../../.wrangler/state",
+    "deploy": "npm run pages:build && wrangler pages deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@barlandia/shared": "*",
+    "next": "15.5.2",
+    "pixi.js": "^8.19.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.5.4",
+    "vercel": "^39.0.0",
+    "wrangler": "^4.107.0"
+  }
+}

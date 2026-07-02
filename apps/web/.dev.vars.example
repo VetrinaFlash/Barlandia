@@ -1,0 +1,3 @@
+# Copia in .dev.vars (stesso SESSION_SECRET del worker realtime!)
+SESSION_SECRET=cambiami-in-un-segreto-lungo
+REALTIME_WS_URL=ws://localhost:8788

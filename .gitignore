@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# next.js / next-on-pages
+apps/web/.next/
+apps/web/.vercel/
+apps/web/out/
+
+# cloudflare local state
+.wrangler/
+apps/*/.wrangler/
+.dev.vars
+apps/*/.dev.vars
+
+# misc
+.DS_Store
+*.log
+dist/
+coverage/
+*.tsbuildinfo

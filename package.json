@@ -1,0 +1,23 @@
+{
+  "name": "barlandia",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Barlandia — social game mobile-first a tema bar, per barlandia.it",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:realtime": "npm run dev --workspace apps/realtime",
+    "build": "npm run build --workspace apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate:local": "wrangler d1 migrations apply barlandia-db --local --config apps/realtime/wrangler.toml --persist-to .wrangler/state",
+    "db:migrate:remote": "wrangler d1 migrations apply barlandia-db --remote --config apps/realtime/wrangler.toml"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "wrangler": "^4.107.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@barlandia/realtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --persist-to ../../.wrangler/state",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@barlandia/shared": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.0",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "@types/node": "^26.1.0",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.107.0"
+  }
+}

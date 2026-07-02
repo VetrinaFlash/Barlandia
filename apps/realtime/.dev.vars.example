@@ -1,0 +1,2 @@
+# Copia in .dev.vars (stesso SESSION_SECRET dell'app web!)
+SESSION_SECRET=cambiami-in-un-segreto-lungo

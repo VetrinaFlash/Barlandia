@@ -1,0 +1,275 @@
+/**
+ * Test del RoomDO con 2 client WebSocket simultanei (deliverable Fase 1)
+ * e della logica valuta/shop (deliverable Fase 2).
+ */
+import { SELF, env } from 'cloudflare:test';
+import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  creditCurrency,
+  getBalance,
+  purchaseItem,
+  signToken,
+  isLayoutBlocked,
+  findPath,
+  SPAWN,
+  type ServerMessage,
+} from '@barlandia/shared';
+
+const SECRET = 'segreto-di-test';
+
+async function makeUser(id: string, username: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (?1, ?2, ?3, 'x')`,
+  )
+    .bind(id, username, `${username}@test.it`)
+    .run();
+}
+
+async function rtToken(uid: string, usr: string): Promise<string> {
+  return signToken(
+    { uid, usr, cs: 'terracotta', scp: 'rt', exp: Math.floor(Date.now() / 1000) + 60 },
+    SECRET,
+  );
+}
+
+/**
+ * Client di test: accoda TUTTI i messaggi dal momento dell'accept, così
+ * nextMessage non perde broadcast arrivati prima di mettersi in ascolto.
+ */
+interface TestClient {
+  ws: WebSocket;
+  queue: ServerMessage[];
+  waiters: Array<() => void>;
+  closed: Promise<void>;
+}
+
+async function connect(uid: string, usr: string): Promise<TestClient> {
+  const token = await rtToken(uid, usr);
+  const res = await SELF.fetch(`https://realtime.test/connect?token=${token}`, {
+    headers: { Upgrade: 'websocket' },
+  });
+  expect(res.status).toBe(101);
+  const ws = res.webSocket;
+  if (!ws) throw new Error('webSocket mancante nella risposta 101');
+
+  const client: TestClient = { ws, queue: [], waiters: [], closed: undefined as never };
+  ws.addEventListener('message', (ev) => {
+    client.queue.push(JSON.parse(ev.data as string) as ServerMessage);
+    for (const w of client.waiters.splice(0)) w();
+  });
+  client.closed = new Promise<void>((resolve) => {
+    ws.addEventListener('close', () => resolve());
+  });
+  ws.accept();
+  return client;
+}
+
+/** Attende (o estrae dalla coda) il prossimo messaggio che soddisfa il predicato. */
+async function nextMessage(
+  client: TestClient,
+  match: (m: ServerMessage) => boolean,
+  timeoutMs = 2000,
+): Promise<ServerMessage> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const idx = client.queue.findIndex(match);
+    if (idx >= 0) {
+      const [msg] = client.queue.splice(idx, 1);
+      return msg as ServerMessage;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('timeout in attesa del messaggio');
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const i = client.waiters.indexOf(onPush);
+        if (i >= 0) client.waiters.splice(i, 1);
+        reject(new Error('timeout in attesa del messaggio'));
+      }, remaining);
+      const onPush = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      client.waiters.push(onPush);
+    });
+  }
+}
+
+describe('RoomDO — 2 client simultanei', () => {
+  beforeAll(async () => {
+    await makeUser('u-anna', 'anna');
+    await makeUser('u-bruno', 'bruno');
+  });
+
+  it('rifiuta la connessione senza token valido', async () => {
+    const res = await SELF.fetch('https://realtime.test/connect?token=falso', {
+      headers: { Upgrade: 'websocket' },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('join, presenza reciproca, move e chat in tempo reale', async () => {
+    const wsAnna = await connect('u-anna', 'anna');
+    const welcomeAnna = (await nextMessage(wsAnna, (m) => m.type === 'welcome')) as Extract<
+      ServerMessage,
+      { type: 'welcome' }
+    >;
+    expect(welcomeAnna.self.username).toBe('anna');
+
+    // Bruno entra: Anna riceve user_joined, Bruno riceve welcome con Anna dentro
+    const joinedPromise = nextMessage(wsAnna, (m) => m.type === 'user_joined');
+    const wsBruno = await connect('u-bruno', 'bruno');
+    const welcomeBruno = (await nextMessage(wsBruno, (m) => m.type === 'welcome')) as Extract<
+      ServerMessage,
+      { type: 'welcome' }
+    >;
+    const joined = (await joinedPromise) as Extract<ServerMessage, { type: 'user_joined' }>;
+    expect(joined.user.username).toBe('bruno');
+    expect(welcomeBruno.users.map((u) => u.username)).toContain('anna');
+
+    // move verso il bancone (bloccato) → errore, nessun broadcast
+    // (fatto PRIMA del move valido: il rate-limit server scarta i move
+    // ravvicinati e il percorso d'errore non consuma il rate-limit)
+    const errPromise = nextMessage(wsAnna, (m) => m.type === 'error');
+    wsAnna.ws.send(JSON.stringify({ type: 'move', targetX: 4, targetY: 1 }));
+    const err = (await errPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(err.code).toBe('invalid_target');
+
+    // move di Anna → broadcast a Bruno, destinazione valida
+    const target = { x: 5, y: 5 };
+    expect(isLayoutBlocked(target.x, target.y)).toBe(false);
+    const movedPromise = nextMessage(wsBruno, (m) => m.type === 'user_moved');
+    wsAnna.ws.send(JSON.stringify({ type: 'move', targetX: target.x, targetY: target.y }));
+    const moved = (await movedPromise) as Extract<ServerMessage, { type: 'user_moved' }>;
+    expect(moved.userId).toBe('u-anna');
+    expect(moved.targetX).toBe(5);
+    expect(moved.targetY).toBe(5);
+
+    // chat di Bruno → arriva ad Anna con timestamp server
+    const chatPromise = nextMessage(wsAnna, (m) => m.type === 'chat');
+    wsBruno.ws.send(JSON.stringify({ type: 'chat', text: 'Ciao, un caffè per favore!' }));
+    const chat = (await chatPromise) as Extract<ServerMessage, { type: 'chat' }>;
+    expect(chat.entry.username).toBe('bruno');
+    expect(chat.entry.text).toBe('Ciao, un caffè per favore!');
+    expect(chat.entry.at).toBeGreaterThan(0);
+
+    // Bruno esce → Anna riceve user_left
+    const leftPromise = nextMessage(wsAnna, (m) => m.type === 'user_left');
+    wsBruno.ws.close();
+    const left = (await leftPromise) as Extract<ServerMessage, { type: 'user_left' }>;
+    expect(left.userId).toBe('u-bruno');
+
+    wsAnna.ws.close();
+  });
+
+  it('la seconda connessione dello stesso utente sostituisce la prima', async () => {
+    const ws1 = await connect('u-anna', 'anna');
+    await nextMessage(ws1, (m) => m.type === 'welcome');
+    const ws2 = await connect('u-anna', 'anna');
+    await nextMessage(ws2, (m) => m.type === 'welcome');
+    // ws1 viene chiusa dal server con codice 4000
+    await ws1.closed;
+    ws2.ws.close();
+  });
+});
+
+describe('Valuta e shop (D1)', () => {
+  beforeAll(async () => {
+    await makeUser('u-carla', 'carla');
+  });
+
+  it('creditCurrency crea il wallet, aggiorna il saldo e logga la transazione', async () => {
+    const balance = await creditCurrency(env.DB, 'u-carla', 50, 'bonus_benvenuto');
+    expect(balance).toBe(50);
+    const txs = await env.DB.prepare(
+      `SELECT amount, reason FROM currency_transactions WHERE user_id = 'u-carla'`,
+    ).all<{ amount: number; reason: string }>();
+    expect(txs.results).toEqual([{ amount: 50, reason: 'bonus_benvenuto' }]);
+  });
+
+  it("l'acquisto è atomico: con saldo sufficiente scala e aggiunge all'inventario", async () => {
+    const result = await purchaseItem(env.DB, 'u-carla', 'sgabello'); // prezzo 15
+    expect(result.ok).toBe(true);
+    expect(result.balance).toBe(35);
+    const inv = await env.DB.prepare(
+      `SELECT item_id, is_placed FROM inventory WHERE user_id = 'u-carla'`,
+    ).all<{ item_id: string; is_placed: number }>();
+    expect(inv.results).toEqual([{ item_id: 'sgabello', is_placed: 0 }]);
+    // il log ha ANCHE la riga negativa dell'acquisto
+    const txCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM currency_transactions WHERE user_id = 'u-carla'`,
+    ).first<{ n: number }>();
+    expect(txCount?.n).toBe(2);
+  });
+
+  it('con saldo insufficiente non scrive NULLA (né wallet né inventario né log)', async () => {
+    const result = await purchaseItem(env.DB, 'u-carla', 'biliardino'); // prezzo 150 > 35
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('insufficient_funds');
+    expect(await getBalance(env.DB, 'u-carla')).toBe(35);
+    const inv = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM inventory WHERE user_id = 'u-carla'`,
+    ).first<{ n: number }>();
+    expect(inv?.n).toBe(1); // solo lo sgabello di prima
+    const txCount = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM currency_transactions WHERE user_id = 'u-carla'`,
+    ).first<{ n: number }>();
+    expect(txCount?.n).toBe(2); // nessuna transazione aggiunta
+  });
+
+  it('articolo inesistente → item_not_found', async () => {
+    const result = await purchaseItem(env.DB, 'u-carla', 'non-esiste');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('item_not_found');
+  });
+});
+
+describe('Piazzamento arredi via WS', () => {
+  beforeAll(async () => {
+    await makeUser('u-dario', 'dario');
+    await makeUser('u-elena', 'elena');
+    await creditCurrency(env.DB, 'u-dario', 100, 'bonus_test');
+  });
+
+  it('piazzamento visibile in tempo reale agli altri client, con verifica ownership', async () => {
+    const buy = await purchaseItem(env.DB, 'u-dario', 'tavolino');
+    expect(buy.ok).toBe(true);
+    const invId = buy.inventoryId as string;
+
+    const wsDario = await connect('u-dario', 'dario');
+    await nextMessage(wsDario, (m) => m.type === 'welcome');
+    const wsElena = await connect('u-elena', 'elena');
+    await nextMessage(wsElena, (m) => m.type === 'welcome');
+
+    // Elena prova a piazzare l'arredo di Dario → not_owner
+    const errPromise = nextMessage(wsElena, (m) => m.type === 'error');
+    wsElena.ws.send(JSON.stringify({ type: 'place_item', inventoryId: invId, x: 3, y: 3 }));
+    const err = (await errPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(err.code).toBe('not_owner');
+
+    // Dario piazza → Elena lo vede in tempo reale
+    const placedPromise = nextMessage(wsElena, (m) => m.type === 'item_placed');
+    wsDario.ws.send(JSON.stringify({ type: 'place_item', inventoryId: invId, x: 3, y: 3 }));
+    const placed = (await placedPromise) as Extract<ServerMessage, { type: 'item_placed' }>;
+    expect(placed.placement.spriteKey).toBe('tavolino');
+    expect(placed.placement.x).toBe(3);
+    expect(placed.placement.ownerId).toBe('u-dario');
+
+    // su D1 risulta piazzato
+    const row = await env.DB.prepare(`SELECT is_placed, placed_x FROM inventory WHERE id = ?1`)
+      .bind(invId)
+      .first<{ is_placed: number; placed_x: number }>();
+    expect(row).toEqual({ is_placed: 1, placed_x: 3 });
+
+    // la tile ora è bloccata per il movimento
+    expect(findPath(SPAWN, { x: 3, y: 3 }, new Set(['3,3']))).toBeNull();
+
+    // pickup → item_removed broadcast
+    const removedPromise = nextMessage(wsElena, (m) => m.type === 'item_removed');
+    wsDario.ws.send(JSON.stringify({ type: 'pickup_item', inventoryId: invId }));
+    const removed = (await removedPromise) as Extract<ServerMessage, { type: 'item_removed' }>;
+    expect(removed.inventoryId).toBe(invId);
+
+    wsDario.ws.close();
+    wsElena.ws.close();
+  });
+});

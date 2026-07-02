@@ -1,0 +1,29 @@
+# Worker realtime di Barlandia: autentica i client e li inoltra al
+# Durable Object della stanza. Il client NON raggiunge mai il DO
+# direttamente: passa sempre da qui con un token firmato.
+
+name = "barlandia-realtime"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "barlandia-db"
+database_id = "SOSTITUIRE_CON_ID_D1"  # wrangler d1 create barlandia-db
+migrations_dir = "../../migrations"
+
+[vars]
+# Origini ammesse per la connessione WebSocket (separate da virgola).
+ALLOWED_ORIGINS = "http://localhost:3000,https://barlandia.it,https://www.barlandia.it"
+
+# Secret (NON in vars in produzione):
+#   wrangler secret put SESSION_SECRET
+# In locale: .dev.vars con SESSION_SECRET=... (stesso valore di apps/web!)
