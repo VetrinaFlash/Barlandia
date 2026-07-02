@@ -85,9 +85,14 @@ I test coprono i deliverable chiave: **2 client WebSocket simultanei** (join rec
 
 ## Deploy su Cloudflare
 
-Ci sono due Worker distinti da deployare, entrambi con lo **stesso meccanismo**: deploy manuale una tantum per farli esistere, poi auto-deploy a ogni push tramite le GitHub Action già incluse in `.github/workflows/`. Deploya prima il realtime, poi il web (il web ha bisogno dell'URL del realtime).
+Ci sono due Worker distinti da deployare (`barlandia` per il web, `barlandia-realtime` per il realtime). Per l'auto-deploy su push hai **due meccanismi equivalenti**, scegli uno per ciascun Worker:
 
-> **Se avevi già collegato un progetto Cloudflare Pages** per questo repo (dashboard → Workers & Pages → Pages): **disconnettilo/eliminalo**. L'app web ora si deploya come Worker via GitHub Actions, non più via Pages Git integration — il vecchio progetto Pages non troverebbe più `pages_build_output_dir` nella configurazione e fallirebbe le build ogni volta.
+- **Workers Builds** (consigliato): Git integration nativa di Cloudflare per i Worker — dashboard, niente secret su GitHub, stessa UX di Pages ma per Worker veri. **Questo è probabilmente quello che ti aspettavi collegando il repo**: se hai creato un progetto **Pages**, non è questo — Pages è un prodotto diverso che non sa più buildare l'app da quando è passata a OpenNext (fallisce cercando `export const runtime = 'edge'`, che ora non c'è più). Vedi sotto come creare invece un Worker con Git integration.
+- **GitHub Actions** (alternativa, già pronta in `.github/workflows/`): utile se preferisci CI esplicita nel repo o se il tuo piano/account non espone ancora Workers Builds.
+
+Deploya prima il realtime, poi il web (il web ha bisogno dell'URL del realtime).
+
+> Se avevi creato un progetto **Pages** per questo repo: eliminalo (Pages non è più il prodotto giusto, da quando l'app è passata a OpenNext continuerebbe a fallire ogni build).
 
 ### 0. Setup one-time (dal tuo terminale, con `wrangler login` fatto)
 
@@ -110,14 +115,7 @@ Genera un secret lungo e casuale per le sessioni (**deve essere identico** sui d
 openssl rand -base64 48                  # copia l'output, ti serve nei prossimi due comandi
 ```
 
-Su GitHub, in *Settings → Secrets and variables → Actions* del repo, aggiungi i due secret che useranno **entrambi** i workflow di deploy:
-
-| Secret | Da dove prenderlo |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | dashboard Cloudflare → *My Profile → API Tokens → Create Token* → template "Edit Cloudflare Workers" |
-| `CLOUDFLARE_ACCOUNT_ID` | dashboard Cloudflare, sidebar destra di qualunque pagina del tuo account |
-
-### 1. Worker realtime — deploy manuale iniziale, poi auto-deploy da CI
+### 1. Worker realtime — deploy manuale iniziale (serve sempre, comunque tu poi automatizzi)
 
 ```bash
 cd apps/realtime
@@ -128,9 +126,7 @@ cd ../..
 
 Aggiorna `ALLOWED_ORIGINS` in `apps/realtime/wrangler.toml` con i domini reali (es. `https://barlandia.it,https://www.barlandia.it`) e rideploya se lo cambi dopo.
 
-Da qui in poi, ogni push a `main` che tocchi `apps/realtime/`, `packages/shared/` o `migrations/` fa auto-deploy (workflow `deploy-realtime.yml`; se il tuo branch di produzione ha un altro nome, cambialo in cima al file). C'è anche `migrate-d1.yml`, **solo manuale** (Actions → *Migra D1 (produzione)* → *Run workflow*): usalo quando cambi lo schema, mai in automatico su ogni push.
-
-### 2. App web — deploy manuale iniziale, poi auto-deploy da CI
+### 2. App web — deploy manuale iniziale
 
 Prima aggiorna `REALTIME_WS_URL` in `apps/web/wrangler.jsonc` con l'URL vero del worker appena deployato (es. `wss://barlandia-realtime.<tuo-account>.workers.dev`), poi:
 
@@ -141,9 +137,32 @@ npm run deploy                            # build OpenNext + wrangler deploy
 cd ../..
 ```
 
-Da qui in poi, ogni push a `main` che tocchi `apps/web/` o `packages/shared/` fa auto-deploy (workflow `deploy-web.yml`).
+### 3a. Auto-deploy su push — Workers Builds (dashboard, consigliata)
 
-### 3. Domini
+Per **ciascuno** dei due Worker: dashboard Cloudflare → *Workers & Pages* → apri il worker (`barlandia` o `barlandia-realtime`, già esistono dal deploy manuale sopra) → *Settings → Builds → Connect to Git* → seleziona questo repository e il branch di produzione. Configurazione:
+
+| Campo | Worker `barlandia` (web) | Worker `barlandia-realtime` |
+|---|---|---|
+| Root directory | `apps/web` | `apps/realtime` |
+| Build command | `npm run cf:build` | *(vuoto, non serve build)* |
+| Deploy command | `npx wrangler deploy` (default) | `npx wrangler deploy` (default) |
+
+Cloudflare installa le dipendenze dalla radice del monorepo automaticamente (rileva gli `npm workspaces`). Da qui in poi ogni push al branch collegato fa auto-deploy di quel Worker, con commit status/PR comment su GitHub — non serve nessun secret su GitHub, Cloudflare ha già le credenziali essendo la sua stessa dashboard.
+
+### 3b. Auto-deploy su push — GitHub Actions (alternativa)
+
+Workflow già pronti in `.github/workflows/deploy-web.yml` e `deploy-realtime.yml`. Su GitHub, in *Settings → Secrets and variables → Actions* del repo, aggiungi:
+
+| Secret | Da dove prenderlo |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | dashboard Cloudflare → *My Profile → API Tokens → Create Token* → template "Edit Cloudflare Workers" |
+| `CLOUDFLARE_ACCOUNT_ID` | dashboard Cloudflare, sidebar destra di qualunque pagina del tuo account |
+
+Girano su push a `main` che tocchi le rispettive app (se il tuo branch di produzione ha un altro nome, cambialo in cima ai file). Non attivare **entrambe** le opzioni per lo stesso Worker: farebbero due deploy ridondanti a ogni push (innocuo ma inutile) — scegline una.
+
+C'è anche `migrate-d1.yml`, **solo manuale** (Actions → *Migra D1 (produzione)* → *Run workflow*): usalo quando cambi lo schema, mai in automatico su ogni push, qualunque opzione tu scelga sopra.
+
+### 4. Domini
 
 Sulla dashboard Cloudflare, apri il worker **`barlandia`** → *Settings → Domains & Routes → Add* → dominio personalizzato `barlandia.it` (e `www.barlandia.it` se vuoi). Se vuoi un dominio pulito anche per il realtime invece di `*.workers.dev` (es. `rt.barlandia.it`), fai lo stesso sul worker `barlandia-realtime` e aggiorna `REALTIME_WS_URL` di conseguenza, poi rideploya l'app web.
 
