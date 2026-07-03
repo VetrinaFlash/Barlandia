@@ -18,6 +18,12 @@ export interface TokenPayload {
   usr: string;
   /** color scheme avatar */
   cs: string;
+  /**
+   * Vestiario avatar (AvatarOutfit). Opzionale per compatibilità con
+   * cookie/token firmati prima dell'introduzione del vestiario: chi ha
+   * una sessione attiva non viene sloggato al deploy di questa feature.
+   */
+  top?: string;
   /** scope: 'session' | 'rt' */
   scp: 'session' | 'rt';
   /** scadenza, epoch secondi */
@@ -91,6 +97,7 @@ export async function verifyToken(
     typeof payload.uid !== 'string' ||
     typeof payload.usr !== 'string' ||
     typeof payload.cs !== 'string' ||
+    (payload.top !== undefined && typeof payload.top !== 'string') ||
     typeof payload.exp !== 'number'
   ) {
     return null;

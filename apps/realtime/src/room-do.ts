@@ -31,6 +31,8 @@ import {
   getXpState,
   isInBounds,
   isWalkable,
+  jobSpotAt,
+  levelForXp,
   tileKey,
   findSpawnTile,
   parseClientMessage,
@@ -47,8 +49,12 @@ interface ConnState {
   uid: string;
   usr: string;
   cs: string;
+  /** vestiario (AvatarOutfit) */
+  top: string;
   x: number;
   y: number;
+  /** livello "Habitué" cacheato (evita una query D1 a ogni broadcast); aggiornato da awardXpAndNotify. */
+  level: number;
   /** ultimo segnale di attività (heartbeat/move/chat), epoch ms */
   lastActiveAt: number;
   lastMoveAt: number;
@@ -56,6 +62,10 @@ interface ConnState {
   lastEmoteAt: number;
   /** inventoryId del posto su cui è seduto, se seduto. */
   seatedOn?: string;
+  /** id della postazione di lavoro occupata, se al lavoro (vedi jobs.ts). */
+  workingAt?: string;
+  /** epoch ms di inizio turno: usato per il limite massimo di durata. */
+  workStartedAt?: number;
 }
 
 const CHAT_STORAGE_KEY = 'chat_history';
@@ -80,6 +90,7 @@ export class RoomDO implements DurableObject {
     const uid = request.headers.get('X-Barlandia-User-Id');
     const usr = request.headers.get('X-Barlandia-Username');
     const cs = request.headers.get('X-Barlandia-Color-Scheme') ?? 'terracotta';
+    const top = request.headers.get('X-Barlandia-Outfit') ?? 'maglia';
     if (!uid || !usr) return new Response('Identità mancante', { status: 400 });
 
     // Una connessione per utente: chiudi l'eventuale socket precedente
@@ -111,12 +122,15 @@ export class RoomDO implements DurableObject {
     const spawn = findSpawnTile(occupied);
 
     const now = Date.now();
+    const xp = await getXpState(this.env.DB, uid);
     const state: ConnState = {
       uid,
       usr,
       cs,
+      top,
       x: spawn.x,
       y: spawn.y,
+      level: levelForXp(xp).level,
       lastActiveAt: now,
       lastMoveAt: 0,
       lastChatAt: 0,
@@ -142,7 +156,6 @@ export class RoomDO implements DurableObject {
       balance = await getBalance(this.env.DB, uid);
     }
     const dailyGoals = await getDailyGoalsState(this.env.DB, uid);
-    const xp = await getXpState(this.env.DB, uid);
 
     this.send(server, {
       type: 'welcome',
@@ -197,11 +210,16 @@ export class RoomDO implements DurableObject {
         break;
 
       case 'move': {
-        // camminare implica alzarsi: niente conferma richiesta, come nella
-        // realtà (ti alzi e basta se qualcuno ti chiama dall'altra parte).
+        // camminare implica alzarsi/staccare: niente conferma richiesta,
+        // come nella realtà (ti alzi e basta se qualcuno ti chiama dall'altra parte).
         if (state.seatedOn) {
           state.seatedOn = undefined;
           this.broadcast({ type: 'user_stood', userId: state.uid });
+        }
+        if (state.workingAt) {
+          state.workingAt = undefined;
+          state.workStartedAt = undefined;
+          this.broadcast({ type: 'user_stopped_working', userId: state.uid });
         }
         if (now - state.lastMoveAt < LIMITS.moveMinIntervalMs) {
           // rate-limit silenzioso: il client legittimo non lo supera mai
@@ -250,7 +268,7 @@ export class RoomDO implements DurableObject {
           .slice(-LIMITS.chatHistorySize);
         await this.ctx.storage.put(CHAT_STORAGE_KEY, history);
         this.broadcast({ type: 'chat', entry });
-        await this.bumpGoalAndNotify(ws, state.uid, 'chat');
+        await this.bumpGoalAndNotify(ws, state, 'chat');
         break;
       }
 
@@ -272,6 +290,14 @@ export class RoomDO implements DurableObject {
 
       case 'emote':
         await this.handleEmote(ws, state, msg.emote, now);
+        break;
+
+      case 'work_start':
+        this.handleWorkStart(ws, state);
+        break;
+
+      case 'work_stop':
+        this.handleWorkStop(ws, state);
         break;
     }
 
@@ -319,20 +345,34 @@ export class RoomDO implements DurableObject {
     for (const ws of sockets) {
       const state = this.readState(ws);
       if (!state || credited.has(state.uid)) continue;
+
+      // turno di lavoro scaduto: si stacca in automatico, a prescindere
+      // dall'idle-check sotto (non deve restare "al lavoro" per sempre
+      // solo perché la tab è inattiva).
+      if (state.workingAt && state.workStartedAt && now - state.workStartedAt > LIMITS.maxShiftMs) {
+        state.workingAt = undefined;
+        state.workStartedAt = undefined;
+        ws.serializeAttachment(state);
+        this.send(ws, { type: 'error', code: 'not_working', message: 'Turno terminato: torna pure domani!' });
+        this.broadcast({ type: 'user_stopped_working', userId: state.uid });
+      }
+
       // anti-abuso base: niente accredito se idle (nessun heartbeat/azione
       // recente — il client manda heartbeat solo con tab in primo piano)
       if (now - state.lastActiveAt > CURRENCY.idleThresholdMs) continue;
       credited.add(state.uid);
       try {
+        const working = !!state.workingAt;
+        const amount = working ? CURRENCY.jobEarnAmount : CURRENCY.earnAmount;
         const balance = await creditCurrency(
           this.env.DB,
           state.uid,
-          CURRENCY.earnAmount,
-          TX_REASONS.passive,
+          amount,
+          working ? TX_REASONS.job : TX_REASONS.passive,
         );
-        this.send(ws, { type: 'currency_earned', amount: CURRENCY.earnAmount, balance });
-        await this.awardXpAndNotify(ws, state.uid, XP.presenceTick);
-        await this.bumpGoalAndNotify(ws, state.uid, 'presence');
+        this.send(ws, { type: 'currency_earned', amount, balance });
+        await this.awardXpAndNotify(ws, state, XP.presenceTick);
+        await this.bumpGoalAndNotify(ws, state, 'presence');
       } catch (e) {
         console.error(`accredito passivo fallito per ${state.uid}`, e);
       }
@@ -472,6 +512,14 @@ export class RoomDO implements DurableObject {
         return;
       }
     }
+    // niente doppio stato: un arredo potrebbe in teoria finire piazzato
+    // vicino a una postazione di lavoro (la validazione piazzamento non
+    // conosce jobs.ts), quindi ci si stacca dal turno prima di sedersi.
+    if (state.workingAt) {
+      state.workingAt = undefined;
+      state.workStartedAt = undefined;
+      this.broadcast({ type: 'user_stopped_working', userId: state.uid });
+    }
     state.seatedOn = inventoryId;
     state.x = seat.x;
     state.y = seat.y;
@@ -487,6 +535,54 @@ export class RoomDO implements DurableObject {
     this.broadcast({ type: 'user_stood', userId: state.uid });
   }
 
+  // -------------------------------------------------------------------------
+  // Postazioni di lavoro (voce 36 di GAME-DESIGN.md): stessa logica di
+  // occupazione esclusiva dei posti a sedere, ma su tile FISSE della
+  // stanza (jobs.ts) invece che su arredi piazzabili, e con una paga
+  // migliore mentre si è al lavoro (vedi alarm()).
+
+  private handleWorkStart(ws: WebSocket, state: ConnState): void {
+    if (state.workingAt) {
+      this.send(ws, { type: 'error', code: 'already_working', message: 'Sei già al lavoro' });
+      return;
+    }
+    const spot = jobSpotAt({ x: state.x, y: state.y });
+    if (!spot) {
+      this.send(ws, {
+        type: 'error',
+        code: 'not_job_spot',
+        message: 'Vai alla postazione di lavoro per timbrare',
+      });
+      return;
+    }
+    for (const other of this.ctx.getWebSockets()) {
+      const st = this.readState(other);
+      if (st && st.uid !== state.uid && st.workingAt === spot.id) {
+        this.send(ws, { type: 'error', code: 'job_occupied', message: 'Postazione occupata' });
+        return;
+      }
+    }
+    // simmetrico alla guardia in handleSit: se un arredo finisse mai
+    // piazzato esattamente sulla tile della postazione, niente doppio stato.
+    if (state.seatedOn) {
+      state.seatedOn = undefined;
+      this.broadcast({ type: 'user_stood', userId: state.uid });
+    }
+    state.workingAt = spot.id;
+    state.workStartedAt = Date.now();
+    this.broadcast({ type: 'user_working', userId: state.uid, jobId: spot.id });
+  }
+
+  private handleWorkStop(ws: WebSocket, state: ConnState): void {
+    if (!state.workingAt) {
+      this.send(ws, { type: 'error', code: 'not_working', message: 'Non sei al lavoro' });
+      return;
+    }
+    state.workingAt = undefined;
+    state.workStartedAt = undefined;
+    this.broadcast({ type: 'user_stopped_working', userId: state.uid });
+  }
+
   private async handleEmote(
     ws: WebSocket,
     state: ConnState,
@@ -499,45 +595,49 @@ export class RoomDO implements DurableObject {
     }
     state.lastEmoteAt = now;
     this.broadcast({ type: 'emote', userId: state.uid, emote });
-    if (emote === 'cheers') await this.awardBadgeAndNotify(ws, state.uid, 'primo_brindisi');
-    await this.bumpGoalAndNotify(ws, state.uid, 'emote');
+    if (emote === 'cheers') await this.awardBadgeAndNotify(ws, state, 'primo_brindisi');
+    await this.bumpGoalAndNotify(ws, state, 'emote');
   }
 
-  private async awardBadgeAndNotify(ws: WebSocket, userId: string, badgeId: string): Promise<void> {
+  private async awardBadgeAndNotify(ws: WebSocket, state: ConnState, badgeId: string): Promise<void> {
     try {
-      const badge = await awardBadge(this.env.DB, userId, badgeId);
+      const badge = await awardBadge(this.env.DB, state.uid, badgeId);
       if (badge) {
         this.send(ws, { type: 'badge_earned', badgeId: badge.id, name: badge.name, icon: badge.icon });
-        await this.awardXpAndNotify(ws, userId, XP.badgeEarned);
+        await this.awardXpAndNotify(ws, state, XP.badgeEarned);
       }
     } catch (e) {
-      console.error(`awardBadge(${badgeId}) fallito per ${userId}`, e);
+      console.error(`awardBadge(${badgeId}) fallito per ${state.uid}`, e);
     }
   }
 
   /** Incrementa un contatore del tris del giorno e notifica SOLO il mittente. */
   private async bumpGoalAndNotify(
     ws: WebSocket,
-    userId: string,
+    state: ConnState,
     kind: 'chat' | 'presence' | 'emote',
   ): Promise<void> {
     try {
-      const { state: goals, awarded, balance } = await bumpDailyGoal(this.env.DB, userId, kind);
+      const { state: goals, awarded, balance } = await bumpDailyGoal(this.env.DB, state.uid, kind);
       this.send(ws, { type: 'daily_goals_update', goals, rewardAwarded: awarded, balance });
       if (awarded !== null) {
-        await this.awardBadgeAndNotify(ws, userId, 'prima_serata');
-        await this.awardXpAndNotify(ws, userId, XP.trisComplete);
+        await this.awardBadgeAndNotify(ws, state, 'prima_serata');
+        await this.awardXpAndNotify(ws, state, XP.trisComplete);
       }
     } catch (e) {
-      console.error(`bumpDailyGoal(${kind}) fallito per ${userId}`, e);
+      console.error(`bumpDailyGoal(${kind}) fallito per ${state.uid}`, e);
     }
   }
 
-  /** Accredita XP (cap giornaliero incluso) e notifica SOLO il mittente. */
-  private async awardXpAndNotify(ws: WebSocket, userId: string, amount: number): Promise<void> {
+  /** Accredita XP (cap giornaliero incluso), aggiorna il livello cacheato e notifica SOLO il mittente. */
+  private async awardXpAndNotify(ws: WebSocket, state: ConnState, amount: number): Promise<void> {
     try {
-      const result = await awardXp(this.env.DB, userId, amount);
+      const result = await awardXp(this.env.DB, state.uid, amount);
       if (!result) return; // cap giornaliero raggiunto: nessuna notifica
+      if (result.levelAfter.level !== state.level) {
+        state.level = result.levelAfter.level;
+        ws.serializeAttachment(state);
+      }
       this.send(ws, {
         type: 'xp_earned',
         amount: result.gained,
@@ -545,7 +645,7 @@ export class RoomDO implements DurableObject {
         leveledUp: result.levelAfter.level > result.levelBefore.level,
       });
     } catch (e) {
-      console.error(`awardXp fallito per ${userId}`, e);
+      console.error(`awardXp fallito per ${state.uid}`, e);
     }
   }
 
@@ -587,7 +687,10 @@ export class RoomDO implements DurableObject {
       x: s.x,
       y: s.y,
       colorScheme: s.cs,
+      outfit: s.top,
+      level: s.level,
       ...(s.seatedOn ? { seatedOn: s.seatedOn } : {}),
+      ...(s.workingAt ? { workingAt: s.workingAt } : {}),
     };
   }
 

@@ -7,6 +7,7 @@
  */
 import { Application, Container, Graphics, Ticker } from 'pixi.js';
 import {
+  JOB_SPOTS,
   ROOM_H,
   ROOM_W,
   findPath,
@@ -26,6 +27,7 @@ import {
   drawEspressoMachine,
   drawFloorGlow,
   drawFurniture,
+  drawJobMarker,
   drawPendantLamp,
   drawWallFrame,
 } from './sprites';
@@ -117,10 +119,21 @@ export class BarEngine {
       existing.path = [];
       existing.renderPos = { x: user.x, y: user.y };
       existing.avatar.setSeated(!!user.seatedOn);
+      existing.avatar.setOutfit(user.outfit);
+      existing.avatar.setLevel(user.level);
+      existing.avatar.setWorking(!!user.workingAt);
       return;
     }
-    const avatar = new Avatar(user.id, user.username, user.colorScheme, user.id === this.selfId);
+    const avatar = new Avatar(
+      user.id,
+      user.username,
+      user.colorScheme,
+      user.outfit,
+      user.level,
+      user.id === this.selfId,
+    );
     avatar.setSeated(!!user.seatedOn);
+    avatar.setWorking(!!user.workingAt);
     const sprite: UserSprite = {
       avatar,
       tile: { x: user.x, y: user.y },
@@ -131,6 +144,19 @@ export class BarEngine {
     this.users.set(user.id, sprite);
     this.objects.addChild(avatar.view);
     this.placeAvatar(sprite);
+  }
+
+  /** Aggiornamento immediato (self) senza aspettare il prossimo state_sync. */
+  setUserOutfit(uid: string, outfit: string): void {
+    this.users.get(uid)?.avatar.setOutfit(outfit);
+  }
+
+  setUserLevel(uid: string, level: number): void {
+    this.users.get(uid)?.avatar.setLevel(level);
+  }
+
+  setUserWorking(uid: string, working: boolean): void {
+    this.users.get(uid)?.avatar.setWorking(working);
   }
 
   /** L'utente si è seduto/alzato (evento dedicato dal server). */
@@ -172,6 +198,9 @@ export class BarEngine {
         u.renderPos = { x: user.x, y: user.y };
       }
       u.avatar.setSeated(!!user.seatedOn);
+      u.avatar.setOutfit(user.outfit);
+      u.avatar.setLevel(user.level);
+      u.avatar.setWorking(!!user.workingAt);
     }
     for (const uid of [...this.users.keys()]) {
       if (!seen.has(uid)) this.removeUser(uid);
@@ -350,6 +379,17 @@ export class BarEngine {
       drawPendantLamp(lamp);
       lamp.position.set(wx, wy - 40);
       room.addChild(lamp);
+    }
+
+    // marcatore delle postazioni di lavoro (jobs.ts): tile fissa, non un
+    // arredo piazzabile — il tap la raggiunge come una tile normale, poi
+    // un pulsante contestuale in HUD avvia il turno quando ci si è sopra.
+    for (const spot of JOB_SPOTS) {
+      const { x: wx, y: wy } = tileToWorld(spot.x, spot.y);
+      const g = new Graphics();
+      drawJobMarker(g);
+      g.position.set(wx, wy);
+      room.addChild(g);
     }
 
     return room;

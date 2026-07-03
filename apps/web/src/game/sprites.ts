@@ -215,6 +215,19 @@ export function drawPendantLamp(g: Graphics): void {
 }
 
 /**
+ * Marcatore di una postazione di lavoro (jobs.ts): anello dorato a terra
+ * + valigetta, per segnalare la tile senza bisogno di un arredo vero e
+ * proprio (non è acquistabile né spostabile).
+ */
+export function drawJobMarker(g: Graphics): void {
+  g.ellipse(0, 0, 16, 8).fill({ color: P.brass, alpha: 0.1 });
+  g.ellipse(0, 0, 16, 8).stroke({ width: 1.5, color: P.brass, alpha: 0.7 });
+  g.roundRect(-9, -16, 18, 12, 2).fill(P.espresso).stroke({ width: 1, color: P.brass, alpha: 0.6 });
+  g.roundRect(-4, -19, 8, 5, 1.5).fill(P.espresso).stroke({ width: 1, color: P.brass, alpha: 0.6 });
+  g.rect(-9, -11, 18, 2).fill({ color: P.brass, alpha: 0.5 });
+}
+
+/**
  * Alone caldo sul pavimento sotto una lampada: cerchi concentrici a bassa
  * opacità (PixiJS Graphics non ha un gradiente radiale comodo per un
  * caso così semplice) — rompe la piattezza dell'illuminazione uniforme

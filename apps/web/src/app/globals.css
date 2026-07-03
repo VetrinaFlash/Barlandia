@@ -234,6 +234,23 @@ input {
   line-height: 1;
 }
 
+.hud-btn-highlight {
+  background: var(--ottone);
+  border-color: var(--ottone);
+  color: var(--espresso-scuro);
+  animation: hud-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes hud-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(201, 162, 39, 0);
+  }
+}
+
 /* banner modalità piazzamento */
 .placement-hint {
   position: absolute;
@@ -617,6 +634,27 @@ input {
 
 .color-swatch.active {
   border-color: var(--crema);
+}
+
+.outfit-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.outfit-btn {
+  background: var(--espresso-scuro);
+  border: 2px solid #55402c;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crema);
+}
+
+.outfit-btn.active {
+  border-color: var(--ottone);
+  background: rgba(201, 162, 39, 0.18);
 }
 
 .badge-grid {

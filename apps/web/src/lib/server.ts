@@ -15,6 +15,7 @@ export interface SessionUser {
   id: string;
   username: string;
   colorScheme: string;
+  outfit: string;
 }
 
 /** Legge e verifica il cookie di sessione. null se assente/invalido. */
@@ -24,7 +25,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!cookie) return null;
   const payload = await verifyToken(cookie, env().SESSION_SECRET, 'session');
   if (!payload) return null;
-  return { id: payload.uid, username: payload.usr, colorScheme: payload.cs };
+  return {
+    id: payload.uid,
+    username: payload.usr,
+    colorScheme: payload.cs,
+    outfit: payload.top ?? 'maglia',
+  };
 }
 
 /** Crea il valore del cookie di sessione firmato. */
@@ -33,6 +39,7 @@ export async function createSessionCookie(user: SessionUser): Promise<string> {
     uid: user.id,
     usr: user.username,
     cs: user.colorScheme,
+    top: user.outfit,
     scp: 'session',
     exp: Math.floor(Date.now() / 1000) + AUTH.sessionTtlSeconds,
   };

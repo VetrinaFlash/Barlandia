@@ -355,6 +355,11 @@ Dettagli implementativi e compromessi in README, sezione "Sprint 1".
 **Sprint 4 — "L'abitudine" (progressione) — ✅ implementato**
 11. Livello "Habitué" (23) — XP solo da presenza attiva ed eventi (tick di presenza, tris del giorno completato, badge guadagnati), MAI dalla spesa; cap giornaliero per non premiare chi resta collegato H24. 7 livelli con titolo a tema bar, pillola in HUD, dettaglio con barra di progresso nel profilo. Dettagli e compromesso dichiarato in README, sezione "Sprint 4".
 
+**Sprint 5 — "Il posto di lavoro" (vestiario, identità, mestiere) — ✅ implementato**
+12. Editor avatar esteso (56) — vestiario (maglia/gilet/papillon/grembiule) oltre al colore, riusando la colonna `top` già presente in `avatar_config`.
+13. Livello visibile sopra l'avatar (estensione di 23) — non solo in HUD/profilo: ogni utente vede il livello di tutti gli altri, sempre, sopra il nome.
+14. Turno da barista (36) — postazione di lavoro fissa dove timbrare per guadagnare Chicchi a un ritmo maggiore della presenza passiva; occupazione esclusiva, turno massimo 15 minuti, nessuno scambio tra utenti. Dettagli e compromessi dichiarati in README, sezione "Sprint 5".
+
 **Poi**: seconda area del locale (1), Compagnie (35), stagione 1 con catalogo a rotazione (40) — e SOLO dopo l'audit valuta: Gettoni (18), trading con escrow (38), aste (39).
 
 > Nota: il calendario completo dei 365 eventi è in `docs/EVENTI-365.md` (generato da `scripts/genera-eventi.mjs`, modificabile e rigenerabile).

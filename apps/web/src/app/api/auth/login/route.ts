@@ -1,4 +1,4 @@
-import { AUTH, verifyPassword } from '@barlandia/shared';
+import { AUTH, normalizeOutfit, verifyPassword } from '@barlandia/shared';
 import {
   createSessionCookie,
   env,
@@ -23,12 +23,19 @@ export async function POST(request: Request): Promise<Response> {
   const db = env().DB;
   const row = await db
     .prepare(
-      `SELECT u.id, u.username, u.password_hash, COALESCE(a.color_scheme, 'terracotta') AS color_scheme
+      `SELECT u.id, u.username, u.password_hash, COALESCE(a.color_scheme, 'terracotta') AS color_scheme,
+              a.top AS top
        FROM users u LEFT JOIN avatar_config a ON a.user_id = u.id
        WHERE u.email = ?1`,
     )
     .bind(email)
-    .first<{ id: string; username: string; password_hash: string; color_scheme: string }>();
+    .first<{
+      id: string;
+      username: string;
+      password_hash: string;
+      color_scheme: string;
+      top: string | null;
+    }>();
 
   // verifica sempre la password anche se l'utente non esiste
   // (riduce l'oracolo di timing sull'esistenza dell'email)
@@ -42,7 +49,12 @@ export async function POST(request: Request): Promise<Response> {
 
   await db.prepare(`UPDATE users SET last_seen_at = unixepoch() WHERE id = ?1`).bind(row.id).run();
 
-  const user = { id: row.id, username: row.username, colorScheme: row.color_scheme };
+  const user = {
+    id: row.id,
+    username: row.username,
+    colorScheme: row.color_scheme,
+    outfit: normalizeOutfit(row.top),
+  };
   const cookie = await createSessionCookie(user);
   return json(
     { user },

@@ -64,12 +64,15 @@ export async function POST(request: Request): Promise<Response> {
   const passwordHash = await hashPassword(password);
 
   // utente + avatar + wallet in un'unica transazione
+  // (top = 'maglia': valore di default esplicito, invece della colonna
+  // DEFAULT 'tshirt' ereditata dallo schema iniziale che precede il
+  // vestiario vero e proprio — vedi AVATAR_OUTFITS)
   await db.batch([
     db
       .prepare(`INSERT INTO users (id, username, email, password_hash) VALUES (?1, ?2, ?3, ?4)`)
       .bind(userId, username, email, passwordHash),
     db
-      .prepare(`INSERT INTO avatar_config (user_id, color_scheme) VALUES (?1, ?2)`)
+      .prepare(`INSERT INTO avatar_config (user_id, color_scheme, top) VALUES (?1, ?2, 'maglia')`)
       .bind(userId, colorScheme),
     db.prepare(`INSERT INTO wallets (user_id, balance) VALUES (?1, 0)`).bind(userId),
   ]);
@@ -85,10 +88,10 @@ export async function POST(request: Request): Promise<Response> {
     await awardBadge(db, userId, 'primi_100');
   }
 
-  const user = { id: userId, username, colorScheme };
+  const user = { id: userId, username, colorScheme, outfit: 'maglia' };
   const cookie = await createSessionCookie(user);
   return json(
-    { user: { id: userId, username, colorScheme }, balance },
+    { user, balance },
     { status: 201, headers: { 'Set-Cookie': sessionCookieHeader(cookie, AUTH.sessionTtlSeconds) } },
   );
 }

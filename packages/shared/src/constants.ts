@@ -29,6 +29,8 @@ export const CURRENCY = {
   dailyBonusAmount: 5,
   /** Premio per aver completato il tris del giorno. */
   dailyGoalsReward: 10,
+  /** Guadagno per intervallo mentre si è "al lavoro" a una postazione (vedi jobs.ts). */
+  jobEarnAmount: 3,
 } as const;
 
 /** Motivi (reason) ammessi nel log currency_transactions. */
@@ -38,6 +40,7 @@ export const TX_REASONS = {
   purchase: 'acquisto_shop',
   daily: 'caffe_giornaliero',
   dailyGoals: 'tris_del_giorno',
+  job: 'turno_lavoro',
 } as const;
 
 /** Tris del giorno: soglie per completare i 3 obiettivi leggeri. */
@@ -63,6 +66,8 @@ export const LIMITS = {
   emoteMinIntervalMs: 1500,
   /** Distanza massima (in tile, Chebyshev) per sedersi su un posto. */
   sitMaxDistance: 1,
+  /** Durata massima di un turno di lavoro: dopo, si viene "timbrati" fuori in automatico. */
+  maxShiftMs: 15 * 60 * 1000,
   usernameMin: 3,
   usernameMax: 20,
   passwordMin: 8,
@@ -89,3 +94,18 @@ export const AVATAR_COLOR_SCHEMES = [
   'vinaccia',
 ] as const;
 export type AvatarColorScheme = (typeof AVATAR_COLOR_SCHEMES)[number];
+
+/** Vestiario disponibile per l'avatar (colonna `top` di avatar_config, riusata). */
+export const AVATAR_OUTFITS = ['maglia', 'gilet', 'papillon', 'grembiule'] as const;
+export type AvatarOutfit = (typeof AVATAR_OUTFITS)[number];
+
+/**
+ * Normalizza un valore letto da `avatar_config.top`: la colonna esiste
+ * da prima del vestiario vero e proprio con DEFAULT 'tshirt', quindi
+ * righe create prima di questa feature hanno un valore che non è più
+ * tra le chiavi valide — ricadono sulla maglia di base invece di rompere
+ * il rendering.
+ */
+export function normalizeOutfit(value: string | null | undefined): AvatarOutfit {
+  return AVATAR_OUTFITS.includes(value as AvatarOutfit) ? (value as AvatarOutfit) : 'maglia';
+}

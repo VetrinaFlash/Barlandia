@@ -15,6 +15,7 @@ export async function GET(): Promise<Response> {
       uid: user.id,
       usr: user.username,
       cs: user.colorScheme,
+      top: user.outfit,
       scp: 'rt',
       exp: Math.floor(Date.now() / 1000) + AUTH.rtTokenTtlSeconds,
     },

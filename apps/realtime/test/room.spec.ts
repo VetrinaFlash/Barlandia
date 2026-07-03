@@ -5,6 +5,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  JOB_SPOTS,
   XP,
   awardBadge,
   awardXp,
@@ -530,6 +531,91 @@ describe('Livelli "Habitué" (XP)', () => {
     expect(xp.amount).toBe(XP.badgeEarned);
     expect(xp.totalXp).toBe(XP.badgeEarned);
     expect(xp.leveledUp).toBe(false);
+
+    ws.ws.close();
+  });
+});
+
+describe('Postazioni di lavoro', () => {
+  const spot = JOB_SPOTS[0]!;
+
+  beforeAll(async () => {
+    await makeUser('u-ugo', 'ugo');
+    await makeUser('u-vera', 'vera');
+  });
+
+  it('non si può timbrare se non si è sulla tile della postazione', async () => {
+    const ws = await connect('u-ugo', 'ugo');
+    await nextMessage(ws, (m) => m.type === 'welcome');
+
+    const errPromise = nextMessage(ws, (m) => m.type === 'error');
+    ws.ws.send(JSON.stringify({ type: 'work_start' }));
+    const err = (await errPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(err.code).toBe('not_job_spot');
+
+    ws.ws.close();
+  });
+
+  it('timbrare sulla tile giusta, occupazione esclusiva, uscita automatica al movimento', async () => {
+    const ws1 = await connect('u-ugo', 'ugo');
+    await nextMessage(ws1, (m) => m.type === 'welcome');
+    const moved1 = nextMessage(ws1, (m) => m.type === 'user_moved');
+    ws1.ws.send(JSON.stringify({ type: 'move', targetX: spot.x, targetY: spot.y }));
+    await moved1;
+
+    const workingPromise = nextMessage(ws1, (m) => m.type === 'user_working');
+    ws1.ws.send(JSON.stringify({ type: 'work_start' }));
+    const working = (await workingPromise) as Extract<ServerMessage, { type: 'user_working' }>;
+    expect(working).toMatchObject({ userId: 'u-ugo', jobId: spot.id });
+
+    // timbrare due volte di fila è un errore esplicito
+    const alreadyPromise = nextMessage(ws1, (m) => m.type === 'error');
+    ws1.ws.send(JSON.stringify({ type: 'work_start' }));
+    const already = (await alreadyPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(already.code).toBe('already_working');
+
+    // una seconda persona può raggiungere la stessa tile ma non timbrare lì
+    const ws2 = await connect('u-vera', 'vera');
+    await nextMessage(ws2, (m) => m.type === 'welcome');
+    const moved2 = nextMessage(ws2, (m) => m.type === 'user_moved');
+    ws2.ws.send(JSON.stringify({ type: 'move', targetX: spot.x, targetY: spot.y }));
+    await moved2;
+
+    const occupiedPromise = nextMessage(ws2, (m) => m.type === 'error');
+    ws2.ws.send(JSON.stringify({ type: 'work_start' }));
+    const occupied = (await occupiedPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(occupied.code).toBe('job_occupied');
+
+    // ws1 si allontana: il turno si interrompe da solo, come alzarsi da seduti
+    const stoppedPromise = nextMessage(ws1, (m) => m.type === 'user_stopped_working');
+    ws1.ws.send(JSON.stringify({ type: 'move', targetX: SPAWN.x, targetY: SPAWN.y }));
+    const stopped = (await stoppedPromise) as Extract<ServerMessage, { type: 'user_stopped_working' }>;
+    expect(stopped.userId).toBe('u-ugo');
+
+    ws1.ws.close();
+    ws2.ws.close();
+  });
+
+  it('work_stop esplicito; senza essere al lavoro è un errore', async () => {
+    const ws = await connect('u-vera', 'vera');
+    await nextMessage(ws, (m) => m.type === 'welcome');
+
+    const notWorkingPromise = nextMessage(ws, (m) => m.type === 'error');
+    ws.ws.send(JSON.stringify({ type: 'work_stop' }));
+    const notWorking = (await notWorkingPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(notWorking.code).toBe('not_working');
+
+    const moved = nextMessage(ws, (m) => m.type === 'user_moved');
+    ws.ws.send(JSON.stringify({ type: 'move', targetX: spot.x, targetY: spot.y }));
+    await moved;
+    const workingPromise = nextMessage(ws, (m) => m.type === 'user_working');
+    ws.ws.send(JSON.stringify({ type: 'work_start' }));
+    await workingPromise;
+
+    const stoppedPromise = nextMessage(ws, (m) => m.type === 'user_stopped_working');
+    ws.ws.send(JSON.stringify({ type: 'work_stop' }));
+    const stopped = (await stoppedPromise) as Extract<ServerMessage, { type: 'user_stopped_working' }>;
+    expect(stopped.userId).toBe('u-vera');
 
     ws.ws.close();
   });

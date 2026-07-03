@@ -4,6 +4,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   AVATAR_COLOR_SCHEMES,
+  AVATAR_OUTFITS,
   CURRENCY,
   levelForXp,
   type ChatEntry,
@@ -281,17 +282,28 @@ export interface Badge {
   earned: boolean;
 }
 
+const OUTFIT_LABELS: Record<string, string> = {
+  maglia: '👕 Maglia',
+  gilet: '🎽 Gilet',
+  papillon: '🎀 Papillon',
+  grembiule: '☕ Grembiule',
+};
+
 export function ProfileSheet({
   username,
   colorScheme,
+  outfit,
   xp,
   onColorChange,
+  onOutfitChange,
   onClose,
 }: {
   username: string;
   colorScheme: string;
+  outfit: string;
   xp: number;
   onColorChange: (scheme: string) => Promise<void>;
+  onOutfitChange: (outfit: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [badges, setBadges] = useState<Badge[] | null>(null);
@@ -348,6 +360,27 @@ export function ProfileSheet({
               }
             }}
           />
+        ))}
+      </div>
+
+      <div className="profile-section-title">Vestiario</div>
+      <div className="outfit-picker">
+        {AVATAR_OUTFITS.map((o) => (
+          <button
+            key={o}
+            className={`outfit-btn${o === outfit ? ' active' : ''}`}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onOutfitChange(o);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {OUTFIT_LABELS[o] ?? o}
+          </button>
         ))}
       </div>
 

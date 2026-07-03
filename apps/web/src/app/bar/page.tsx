@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   EMOTES,
+  JOB_SPOTS,
   levelForXp,
   type ChatEntry,
   type DailyGoalsSnapshot,
@@ -64,6 +65,7 @@ export default function BarPage() {
 
   const [username, setUsername] = useState('');
   const [colorScheme, setColorScheme] = useState('terracotta');
+  const [outfit, setOutfit] = useState('maglia');
   const [balance, setBalance] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -73,6 +75,8 @@ export default function BarPage() {
   const [invRefresh, setInvRefresh] = useState(0);
   const [connStatus, setConnStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [seated, setSeated] = useState(false);
+  const [selfPos, setSelfPos] = useState({ x: -1, y: -1 });
+  const [working, setWorking] = useState(false);
   const [dailyGoals, setDailyGoals] = useState<DailyGoalsSnapshot | null>(null);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [xp, setXp] = useState(0);
@@ -117,12 +121,13 @@ export default function BarPage() {
         return;
       }
       const me = (await meRes.json()) as {
-        user: { id: string; username: string; colorScheme: string };
+        user: { id: string; username: string; colorScheme: string; outfit: string };
         balance: number;
       };
       if (cancelled) return;
       setUsername(me.user.username);
       setColorScheme(me.user.colorScheme);
+      setOutfit(me.user.outfit);
       setBalance(me.balance);
       selfIdRef.current = me.user.id;
 
@@ -167,6 +172,8 @@ export default function BarPage() {
               setMessages(msg.chat);
               setBalance(msg.balance);
               setSeated(!!msg.self.seatedOn);
+              setSelfPos({ x: msg.self.x, y: msg.self.y });
+              setWorking(!!msg.self.workingAt);
               setDailyGoals(msg.dailyGoals);
               setXp(msg.xp);
               setOnlineIds(new Set(msg.users.map((u) => u.id).concat(msg.self.id)));
@@ -188,6 +195,9 @@ export default function BarPage() {
               break;
             case 'user_moved':
               eng.walkUserTo(msg.userId, { x: msg.targetX, y: msg.targetY });
+              if (msg.userId === selfIdRef.current) {
+                setSelfPos({ x: msg.targetX, y: msg.targetY });
+              }
               break;
             case 'state_sync':
               eng.syncUsers(msg.users);
@@ -219,12 +229,28 @@ export default function BarPage() {
               eng.setUserSeated(msg.userId, true, { x: msg.x, y: msg.y });
               if (msg.userId === selfIdRef.current) {
                 setSeated(true);
+                setSelfPos({ x: msg.x, y: msg.y });
                 sound.sit();
               }
               break;
             case 'user_stood':
               eng.setUserSeated(msg.userId, false);
               if (msg.userId === selfIdRef.current) setSeated(false);
+              break;
+            case 'user_working':
+              eng.setUserWorking(msg.userId, true);
+              if (msg.userId === selfIdRef.current) {
+                setWorking(true);
+                sound.clockIn();
+                showToast('Turno iniziato: Chicchi extra finché lavori ☕');
+              }
+              break;
+            case 'user_stopped_working':
+              eng.setUserWorking(msg.userId, false);
+              if (msg.userId === selfIdRef.current) {
+                setWorking(false);
+                sound.clockOut();
+              }
               break;
             case 'emote':
               eng.showEmote(msg.userId, EMOTE_EMOJI[msg.emote]);
@@ -248,6 +274,9 @@ export default function BarPage() {
                 const { level, title } = levelForXp(msg.totalXp);
                 showToast(`Sei salito al livello ${level}: ${title}! 🏅`);
                 sound.levelUp();
+                // aggiornamento immediato sopra la propria testa, senza
+                // aspettare il prossimo state_sync (fino a 5 minuti dopo)
+                eng.setUserLevel(selfIdRef.current, level);
               }
               break;
             case 'error':
@@ -313,6 +342,16 @@ export default function BarPage() {
     connRef.current?.send({ type: 'stand' });
   }
 
+  function startWork() {
+    connRef.current?.send({ type: 'work_start' });
+  }
+
+  function stopWork() {
+    connRef.current?.send({ type: 'work_stop' });
+  }
+
+  const onJobSpot = JOB_SPOTS.some((j) => j.x === selfPos.x && j.y === selfPos.y);
+
   async function onColorChange(scheme: string) {
     const res = await fetch('/api/avatar', {
       method: 'PATCH',
@@ -326,6 +365,24 @@ export default function BarPage() {
     setColorScheme(scheme);
     // il colore è firmato nel token rt: riconnettiamo per farlo arrivare
     // subito agli altri utenti (breve sparizione/riapparizione visibile)
+    connRef.current?.stop();
+    await connRef.current?.start();
+  }
+
+  async function onOutfitChange(newOutfit: string) {
+    const res = await fetch('/api/avatar', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outfit: newOutfit }),
+    });
+    if (!res.ok) {
+      showToast('Cambio vestiario non riuscito');
+      return;
+    }
+    setOutfit(newOutfit);
+    // aggiornamento immediato locale; gli altri lo vedranno alla
+    // riconnessione (stesso compromesso già accettato per il colore)
+    engineRef.current?.setUserOutfit(selfIdRef.current, newOutfit);
     connRef.current?.stop();
     await connRef.current?.start();
   }
@@ -410,6 +467,16 @@ export default function BarPage() {
             Alzati
           </button>
         )}
+        {!seated && onJobSpot && !working && (
+          <button className="hud-btn hud-btn-highlight" onClick={startWork}>
+            ☕ Inizia turno
+          </button>
+        )}
+        {working && (
+          <button className="hud-btn" onClick={stopWork}>
+            Fine turno
+          </button>
+        )}
       </div>
 
       {placement && (
@@ -451,8 +518,10 @@ export default function BarPage() {
         <ProfileSheet
           username={username}
           colorScheme={colorScheme}
+          outfit={outfit}
           xp={xp}
           onColorChange={onColorChange}
+          onOutfitChange={onOutfitChange}
           onClose={() => setSheet(null)}
         />
       )}

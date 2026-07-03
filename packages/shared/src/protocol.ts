@@ -16,8 +16,14 @@ export interface RoomUser {
   x: number;
   y: number;
   colorScheme: string;
+  /** Vestiario (AvatarOutfit); vedi jobs.ts/levels.ts per il resto della progressione. */
+  outfit: string;
+  /** Livello "Habitué" (levelForXp(xp).level), visibile a tutti sopra l'avatar. */
+  level: number;
   /** inventoryId del posto su cui è seduto, se seduto. */
   seatedOn?: string;
+  /** id della postazione di lavoro occupata (vedi jobs.ts), se al lavoro. */
+  workingAt?: string;
 }
 
 export interface ChatEntry {
@@ -97,6 +103,15 @@ export interface EmoteMessage {
   emote: EmoteType;
 }
 
+/** Timbra l'ingresso: valido solo se il mittente è già sulla tile della postazione. */
+export interface WorkStartMessage {
+  type: 'work_start';
+}
+
+export interface WorkStopMessage {
+  type: 'work_stop';
+}
+
 export type ClientMessage =
   | MoveMessage
   | ChatMessage
@@ -105,7 +120,9 @@ export type ClientMessage =
   | PickupItemMessage
   | SitMessage
   | StandMessage
-  | EmoteMessage;
+  | EmoteMessage
+  | WorkStartMessage
+  | WorkStopMessage;
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -216,6 +233,18 @@ export interface XpEarnedMessage {
   leveledUp: boolean;
 }
 
+/** Broadcast: qualcuno ha iniziato un turno a una postazione di lavoro. */
+export interface UserWorkingMessage {
+  type: 'user_working';
+  userId: string;
+  jobId: string;
+}
+
+export interface UserStoppedWorkingMessage {
+  type: 'user_stopped_working';
+  userId: string;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code:
@@ -230,6 +259,10 @@ export interface ErrorMessage {
     | 'seat_occupied'
     | 'too_far'
     | 'not_seated'
+    | 'not_job_spot'
+    | 'job_occupied'
+    | 'already_working'
+    | 'not_working'
     | 'internal';
   message: string;
 }
@@ -250,6 +283,8 @@ export type ServerMessage =
   | DailyGoalsUpdateMessage
   | BadgeEarnedMessage
   | XpEarnedMessage
+  | UserWorkingMessage
+  | UserStoppedWorkingMessage
   | ErrorMessage;
 
 // ---------------------------------------------------------------------------
@@ -308,6 +343,10 @@ export function parseClientMessage(raw: string | ArrayBuffer): ClientMessage | n
       if (typeof msg.emote !== 'string' || !EMOTES.includes(msg.emote as EmoteType)) return null;
       return { type: 'emote', emote: msg.emote as EmoteType };
     }
+    case 'work_start':
+      return { type: 'work_start' };
+    case 'work_stop':
+      return { type: 'work_stop' };
     default:
       return null;
   }

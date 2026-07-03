@@ -16,6 +16,14 @@ const NAME_STYLE = new TextStyle({
   stroke: { color: 0x2b1d12, width: 3 },
 });
 
+const LEVEL_STYLE = new TextStyle({
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 9,
+  fontWeight: '700',
+  fill: 0xffd98a,
+  stroke: { color: 0x2b1d12, width: 2.5 },
+});
+
 const BUBBLE_STYLE = new TextStyle({
   fontFamily: 'system-ui, sans-serif',
   fontSize: 12,
@@ -31,6 +39,8 @@ export class Avatar {
   readonly view = new Container();
   private body = new Graphics();
   private nameLabel: Text;
+  private levelLabel: Text;
+  private workBadge: Text;
   private bubble = new Container();
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
   private emoteText: Text;
@@ -38,6 +48,7 @@ export class Avatar {
   private direction: Direction = 'S';
   private skin: number;
   private colors: { body: number; accent: number };
+  private outfit: string;
   private walkPhase = 0;
   private seated = false;
   walking = false;
@@ -46,9 +57,12 @@ export class Avatar {
     readonly userId: string,
     username: string,
     colorScheme: string,
+    outfit: string,
+    level: number,
     isSelf: boolean,
   ) {
     this.colors = AVATAR_COLORS[colorScheme] ?? AVATAR_COLORS.terracotta!;
+    this.outfit = outfit;
     // tono pelle stabile per utente (hash banale dell'id)
     let h = 0;
     for (const c of userId) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -56,11 +70,24 @@ export class Avatar {
 
     this.view.addChild(this.body);
 
+    this.levelLabel = new Text({ text: `Lv.${level}`, style: LEVEL_STYLE });
+    this.levelLabel.anchor.set(0.5, 1);
+    this.levelLabel.y = -67;
+    this.view.addChild(this.levelLabel);
+
     this.nameLabel = new Text({ text: username, style: NAME_STYLE });
     this.nameLabel.anchor.set(0.5, 1);
     this.nameLabel.y = -56;
     if (isSelf) this.nameLabel.tint = 0xffd98a;
     this.view.addChild(this.nameLabel);
+
+    this.workBadge = new Text({ text: '💼', style: EMOTE_STYLE });
+    this.workBadge.scale.set(0.45);
+    this.workBadge.anchor.set(0.5, 1);
+    this.workBadge.y = -58;
+    this.workBadge.x = 16;
+    this.workBadge.visible = false;
+    this.view.addChild(this.workBadge);
 
     this.bubble.visible = false;
     this.view.addChild(this.bubble);
@@ -86,6 +113,21 @@ export class Avatar {
     if (this.seated === seated) return;
     this.seated = seated;
     this.body.scale.y = seated ? 0.72 : 1;
+  }
+
+  setOutfit(outfit: string): void {
+    if (this.outfit === outfit) return;
+    this.outfit = outfit;
+    this.redraw();
+  }
+
+  setLevel(level: number): void {
+    this.levelLabel.text = `Lv.${level}`;
+  }
+
+  /** Badge "al lavoro" persistente accanto al nome (vedi jobs.ts). */
+  setWorking(working: boolean): void {
+    this.workBadge.visible = working;
   }
 
   /** Avanza l'animazione di camminata (bob + oscillazione). dt in secondi. */
@@ -159,9 +201,28 @@ export class Avatar {
 
     // corpo (capsula)
     g.roundRect(-10, -34, 20, 22, 9).fill(body).stroke(OUTLINE);
-    // grembiule da avventore? no: dettaglio maglia
+    // vestiario: accento sul petto, diverso per ogni outfit (visibile solo
+    // di fronte/lato — semplificazione accettata, come già la vecchia
+    // striscia unica "dettaglio maglia" che sostituisce).
     if (!back) {
-      g.roundRect(-10, -22, 20, 4, 2).fill(accent);
+      switch (this.outfit) {
+        case 'gilet':
+          g.roundRect(-9, -33, 18, 15, 6).fill({ color: 0x2b2118, alpha: 0.92 }).stroke(OUTLINE);
+          g.moveTo(0, -33).lineTo(0, -19).stroke({ width: 1.4, color: 0x1c1108, alpha: 0.5 });
+          break;
+        case 'papillon':
+          g.roundRect(-9, -34, 18, 11, 8).fill(P.crema);
+          g.poly([-4, -33, 4, -33, 1.5, -30.5, -1.5, -30.5]).fill(accent);
+          g.circle(0, -30.5, 1.4).fill(accent);
+          break;
+        case 'grembiule':
+          g.roundRect(-8, -26, 16, 17, 3).fill({ color: accent, alpha: 0.95 }).stroke(OUTLINE);
+          g.moveTo(-8, -26).lineTo(-11, -33).stroke({ width: 1.6, color: accent, alpha: 0.85 });
+          g.moveTo(8, -26).lineTo(11, -33).stroke({ width: 1.6, color: accent, alpha: 0.85 });
+          break;
+        default:
+          g.roundRect(-10, -22, 20, 4, 2).fill(accent);
+      }
     }
     // braccia
     if (side) {

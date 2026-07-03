@@ -60,6 +60,7 @@ export default {
     doReq.headers.set('X-Barlandia-User-Id', payload.uid);
     doReq.headers.set('X-Barlandia-Username', payload.usr);
     doReq.headers.set('X-Barlandia-Color-Scheme', payload.cs);
+    doReq.headers.set('X-Barlandia-Outfit', payload.top ?? 'maglia');
     return stub.fetch(doReq);
   },
 } satisfies ExportedHandler<Env>;

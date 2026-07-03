@@ -8,3 +8,4 @@ export * from './badges';
 export * from './friends';
 export * from './eventi';
 export * from './levels';
+export * from './jobs';
