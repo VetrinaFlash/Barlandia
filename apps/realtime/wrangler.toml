@@ -22,7 +22,7 @@ migrations_dir = "../../migrations"
 
 [vars]
 # Origini ammesse per la connessione WebSocket (separate da virgola).
-ALLOWED_ORIGINS = "http://localhost:3000,https://barlandia.it,https://www.barlandia.it"
+ALLOWED_ORIGINS = "http://localhost:3000,https://barlandia.it,https://www.barlandia.it,https://barlandia.vetrinaflash.workers.dev"
 
 # Secret (NON in vars in produzione):
 #   wrangler secret put SESSION_SECRET

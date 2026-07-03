@@ -29,7 +29,7 @@
   "vars": {
     // URL del worker realtime a cui il client apre il WebSocket
     // (in locale: ws://localhost:8788 — vedi .dev.vars.example)
-    "REALTIME_WS_URL": "wss://barlandia-realtime.SOSTITUIRE.workers.dev"
+    "REALTIME_WS_URL": "wss://barlandia-realtime.vetrinaflash.workers.dev"
   }
   // Secret (NON qui in produzione):
   //   wrangler secret put SESSION_SECRET
