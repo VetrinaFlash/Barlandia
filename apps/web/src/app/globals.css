@@ -742,6 +742,73 @@ input {
   background: var(--salvia);
 }
 
+/* compagnie */
+.company-found-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.company-found-form input {
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 999px;
+  padding: 10px 16px;
+  color: var(--crema);
+}
+
+.company-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.company-emblem {
+  font-size: 34px;
+}
+
+.company-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.company-count {
+  font-size: 12px;
+  color: var(--crema-scura);
+}
+
+.company-motto {
+  font-style: italic;
+  color: var(--crema-scura);
+  padding: 10px 0 16px;
+  border-bottom: 1px dashed #4a3722;
+  margin-bottom: 6px;
+}
+
+.company-motto-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.company-motto-form textarea {
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--crema);
+  resize: vertical;
+  min-height: 50px;
+  font-family: inherit;
+}
+
+.company-leave-btn {
+  margin-top: 18px;
+  width: 100%;
+}
+
 /* obiettivi del giorno */
 .goal-list {
   display: flex;

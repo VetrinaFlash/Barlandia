@@ -108,6 +108,14 @@ Terzo giro di richieste dirette ("cerca dei personaggi dove possiamo cambiare ve
 - **Livello sopra l'avatar**: `RoomUser` ora porta `level` (oltre a `outfit`), calcolato e cacheato nel `ConnState` del RoomDO (`levelForXp(xp).level`) per non fare una query D1 a ogni broadcast — si aggiorna quando `awardXpAndNotify` rileva un cambio di soglia. Il proprio livello si aggiorna anche localmente in modo immediato al level-up (`engine.setUserLevel`), senza aspettare il prossimo `state_sync` (fino a 5 minuti dopo).
 - **Postazioni di lavoro** (voce 36, "Turno da barista"): una tile fissa della stanza (`JOB_SPOTS` in `packages/shared/src/jobs.ts`, non un arredo acquistabile) dove "timbrare" per guadagnare Chicchi a un ritmo maggiore (`CURRENCY.jobEarnAmount`) della presenza passiva. Occupazione esclusiva e distacco automatico al movimento, stessa logica già collaudata per sedersi — **non è un minigioco**: nessun input attivo richiesto oltre a esserci, e **nessuno scambio tra utenti** (resta uno stato di presenza personale, coerente con i vincoli su trading/P2P). Turno massimo 15 minuti (`LIMITS.maxShiftMs`), poi si viene "timbrati" fuori in automatico. Pulsante contestuale "☕ Inizia turno" quando ci si trova sulla tile giusta, "Fine turno" quando si è al lavoro.
 
+## Sprint 6 (game design) — Compagnie
+
+Quarto giro ("continua però perché manca tante cose"): il prossimo item della roadmap che non richiede toccare l'architettura delle stanze (a differenza di "seconda area del locale").
+
+- **Compagnie** (voce 35 di `docs/GAME-DESIGN.md`): gruppi con nome, stemma (6 emoji fisse, stesso trattamento "placeholder" già usato per i badge), motto e fino a 25 membri (`packages/shared/src/companies.ts`). Un utente appartiene al più a una compagnia alla volta (`UNIQUE` su `company_members.user_id`). Inviti per username, accetta/rifiuta come il sistema amici già esistente. Il fondatore che esce passa il titolo al membro più anziano rimasto, o scioglie la compagnia se era l'ultimo.
+- **NIENTE valuta condivisa o trasferimenti tra membri** — stessa linea già tracciata per amici/badge: una compagnia è un raggruppamento sociale, non un'entità economica.
+- **Semplificazioni dichiarate rispetto alla voce 35 originale**: il "rito fondativo in tre persone al bancone" non è implementato (richiederebbe un protocollo di coordinamento multi-utente in tempo reale che non esiste) — ci si fonda da soli e si invitano gli altri; il "tavolo abituale prenotabile" dipende da un sistema di stanze private non ancora costruito; lo stemma non compare sopra l'avatar in stanza come il livello — per ora la compagnia si vede solo nella sheet dedicata.
+
 ## Setup locale
 
 Prerequisiti: Node 22+, npm 10+.

@@ -22,6 +22,7 @@ import {
   BachecaSheet,
   CartolinaSheet,
   ChatSheet,
+  CompanySheet,
   FriendsSheet,
   GoalsSheet,
   InventorySheet,
@@ -40,7 +41,8 @@ type OpenSheet =
   | 'friends'
   | 'bacheca'
   | 'cartolina'
-  | 'goals';
+  | 'goals'
+  | 'company';
 
 interface PlacementMode {
   inventoryId: string;
@@ -430,6 +432,9 @@ export default function BarPage() {
           <button className="hud-btn" onClick={() => setSheet('friends')}>
             Amici
           </button>
+          <button className="hud-btn" onClick={() => setSheet('company')}>
+            Compagnia
+          </button>
           <button className="hud-btn" onClick={() => setSheet('bacheca')}>
             Bacheca
           </button>
@@ -527,6 +532,9 @@ export default function BarPage() {
       )}
       {sheet === 'friends' && (
         <FriendsSheet onlineIds={onlineIds} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'company' && (
+        <CompanySheet selfId={selfIdRef.current} onClose={() => setSheet(null)} />
       )}
       {sheet === 'goals' && (
         <GoalsSheet dailyGoals={dailyGoals} onClose={() => setSheet(null)} />

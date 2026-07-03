@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   AVATAR_COLOR_SCHEMES,
   AVATAR_OUTFITS,
+  COMPANY_MAX_MEMBERS,
   CURRENCY,
   levelForXp,
   type ChatEntry,
@@ -529,6 +530,237 @@ export function FriendsSheet({
             </button>
           </div>
         ))}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+const COMPANY_EMBLEMS = ['⭐', '⚓', '👑', '🛡️', '🔥', '🍀'];
+
+interface CompanyMemberView {
+  id: string;
+  username: string;
+  role: 'fondatore' | 'membro';
+}
+
+interface CompanyInviteView {
+  id: string; // company id
+  name: string;
+  emblem: string;
+  invitedBy: string;
+}
+
+interface CompanyView {
+  id: string;
+  name: string;
+  emblem: string;
+  motto: string;
+  founderId: string;
+  members: CompanyMemberView[];
+}
+
+/**
+ * Compagnie (voce 35 di GAME-DESIGN.md): gruppi con nome, stemma, motto
+ * e membri. Semplificazioni dichiarate: si fonda da soli (niente rito
+ * a tre al bancone) e lo stemma non compare sopra l'avatar in stanza —
+ * vedi companies.ts per i dettagli.
+ */
+export function CompanySheet({ selfId, onClose }: { selfId: string; onClose: () => void }) {
+  const [data, setData] = useState<{ company: CompanyView | null; invites: CompanyInviteView[] } | null>(
+    null,
+  );
+  const [refresh, setRefresh] = useState(0);
+  const [name, setName] = useState('');
+  const [emblem, setEmblem] = useState(COMPANY_EMBLEMS[0]!);
+  const [inviteUsername, setInviteUsername] = useState('');
+  const [mottoText, setMottoText] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/company')
+      .then((r) => r.json() as Promise<{ company: CompanyView | null; invites: CompanyInviteView[] }>)
+      .then((d) => {
+        setData(d);
+        setMottoText(d.company?.motto ?? '');
+      })
+      .catch(() => setData({ company: null, invites: [] }));
+  }, [refresh]);
+
+  async function found(e: FormEvent) {
+    e.preventDefault();
+    const res = await fetch('/api/company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, emblem }),
+    });
+    const body = (await res.json()) as { message?: string };
+    if (!res.ok) {
+      setMessage(body.message ?? 'Fondazione non riuscita');
+      return;
+    }
+    setMessage(null);
+    setName('');
+    setRefresh((n) => n + 1);
+  }
+
+  async function respond(companyId: string, accept: boolean) {
+    await fetch('/api/company/invite/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId, accept }),
+    });
+    setRefresh((n) => n + 1);
+  }
+
+  async function invite(e: FormEvent) {
+    e.preventDefault();
+    const u = inviteUsername.trim();
+    if (!u) return;
+    const res = await fetch('/api/company/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u }),
+    });
+    const body = (await res.json()) as { message?: string };
+    setMessage(res.ok ? `Invito inviato a ${u}` : (body.message ?? 'Invito non riuscito'));
+    if (res.ok) setInviteUsername('');
+  }
+
+  async function leave() {
+    if (!confirm('Vuoi lasciare la compagnia?')) return;
+    await fetch('/api/company/leave', { method: 'POST' });
+    setRefresh((n) => n + 1);
+  }
+
+  async function saveMotto(e: FormEvent) {
+    e.preventDefault();
+    await fetch('/api/company/motto', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motto: mottoText }),
+    });
+    setRefresh((n) => n + 1);
+  }
+
+  if (data === null) {
+    return (
+      <Sheet title="Compagnia" onClose={onClose}>
+        <div className="inv-empty">Carico…</div>
+      </Sheet>
+    );
+  }
+
+  if (!data.company) {
+    return (
+      <Sheet title="Compagnia" onClose={onClose}>
+        {data.invites.length > 0 && (
+          <>
+            <div className="profile-section-title">Inviti ricevuti</div>
+            {data.invites.map((inv) => (
+              <div className="friend-row" key={inv.id}>
+                <span>
+                  {inv.emblem} {inv.name} <span className="friend-pending">da {inv.invitedBy}</span>
+                </span>
+                <div className="friend-row-actions">
+                  <button className="shop-buy" onClick={() => respond(inv.id, true)}>
+                    Accetta
+                  </button>
+                  <button className="shop-buy secondary" onClick={() => respond(inv.id, false)}>
+                    Rifiuta
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        <div className="profile-section-title">Fonda una compagnia</div>
+        <form className="company-found-form" onSubmit={found}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nome della compagnia…"
+            maxLength={30}
+          />
+          <div className="outfit-picker">
+            {COMPANY_EMBLEMS.map((e) => (
+              <button
+                type="button"
+                key={e}
+                className={`outfit-btn${e === emblem ? ' active' : ''}`}
+                onClick={() => setEmblem(e)}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          <button className="shop-buy" type="submit">
+            Fonda
+          </button>
+        </form>
+        {message && <div className="inv-empty">{message}</div>}
+      </Sheet>
+    );
+  }
+
+  const { company } = data;
+  const isFounder = company.founderId === selfId;
+
+  return (
+    <Sheet title="Compagnia" onClose={onClose}>
+      <div className="company-header">
+        <span className="company-emblem">{company.emblem}</span>
+        <div>
+          <div className="company-name">{company.name}</div>
+          <div className="company-count">
+            {company.members.length}/{COMPANY_MAX_MEMBERS} membri
+          </div>
+        </div>
+      </div>
+
+      {isFounder ? (
+        <form className="company-motto-form" onSubmit={saveMotto}>
+          <textarea
+            value={mottoText}
+            onChange={(e) => setMottoText(e.target.value)}
+            maxLength={140}
+            placeholder="Motto della compagnia…"
+          />
+          <button className="shop-buy secondary" type="submit">
+            Salva motto
+          </button>
+        </form>
+      ) : (
+        company.motto && <div className="company-motto">“{company.motto}”</div>
+      )}
+
+      <div className="profile-section-title">Membri</div>
+      {company.members.map((m) => (
+        <div className="friend-row" key={m.id}>
+          <span>
+            {m.username}
+            {m.role === 'fondatore' && ' 👑'}
+          </span>
+        </div>
+      ))}
+
+      <div className="profile-section-title">Invita</div>
+      <form className="friend-add-row" onSubmit={invite}>
+        <input
+          value={inviteUsername}
+          onChange={(e) => setInviteUsername(e.target.value)}
+          placeholder="Username da invitare…"
+          maxLength={20}
+        />
+        <button className="shop-buy" type="submit">
+          Invita
+        </button>
+      </form>
+      {message && <div className="inv-empty">{message}</div>}
+
+      <button className="shop-buy secondary company-leave-btn" onClick={leave}>
+        Lascia la compagnia
+      </button>
     </Sheet>
   );
 }
