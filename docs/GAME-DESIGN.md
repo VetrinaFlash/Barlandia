@@ -347,10 +347,10 @@ Dettagli implementativi e compromessi in README, sezione "Sprint 1".
 6. Profilo con badge (24) e primi 3 badge: primi_100 (registrazione), prima_serata (primo tris del giorno completato), primo_brindisi (prima emote cheers). Assegnazione idempotente via `awardBadge` (INSERT OR IGNORE), mai valuta coinvolta.
 7. Editor avatar (56) — solo colore per ora (6 schemi già esistenti in `AVATAR_COLOR_SCHEMES`); `avatar_config` supporta anche body/hair/top/bottom ma servirebbero asset e logica di disegno che non esistono ancora nel motore procedurale.
 
-**Sprint 3 — "L'appuntamento" (eventi)**
-8. Palinsesto fisso + bacheca (7, 9) e primo format: karaoke semplificato (66) o quiz (67).
-9. Notifica intelligente unica (84): "i tuoi amici sono al bar".
-10. Cartolina della serata (87).
+**Sprint 3 — "L'appuntamento" (eventi) — ✅ implementato (parziale)**
+8. Bacheca (9) — mostra l'evento di oggi dal palinsesto fisso, stessa logica di `docs/EVENTI-365.md` ricalcolata a runtime per la data reale (`eventoDelGiorno` in `packages/shared/src/eventi.ts`). **Il "primo format" giocabile (karaoke/quiz, item 66/67) NON è implementato**: è un minigioco vero e proprio, e i minigiochi sono esplicitamente fuori scope nell'handoff originale di Fase 1 — la bacheca oggi è solo informativa (mostra cosa "succederebbe" stasera), non ospita ancora un format interattivo.
+9. **Notifica intelligente (84) NON implementata**: richiede un'infrastruttura Web Push (VAPID keys, service worker con push handler, storage delle subscription, gestione dei permessi) che non esiste ancora e merita un giro dedicato — specialmente per le differenze di supporto tra iOS/Android/desktop, che vanno testate con cura e non improvvisate.
+10. Cartolina della serata (87) — riepilogo di oggi (minuti di presenza stimati, tris del giorno, saldo, badge guadagnati oggi, evento della serata) in una card in stile "cartolina". Nessuna esportazione automatica in immagine: l'utente fa uno screenshot per condividerla — scelta deliberata per evitare di introdurre una libreria di rendering canvas-to-image solo per questo.
 
 **Poi**: seconda area del locale (1), Compagnie (35), stagione 1 con catalogo a rotazione (40) — e SOLO dopo l'audit valuta: Gettoni (18), trading con escrow (38), aste (39).
 

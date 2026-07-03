@@ -643,3 +643,71 @@ input {
 .friend-dot.online {
   background: var(--salvia);
 }
+
+/* bacheca: evento del giorno */
+.event-card {
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+}
+
+.event-format {
+  display: inline-block;
+  background: var(--terracotta);
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 12px;
+}
+
+.event-name {
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.event-goal {
+  color: var(--crema-scura);
+  font-size: 14px;
+}
+
+/* cartolina della serata */
+.postcard {
+  background: linear-gradient(160deg, var(--espresso-scuro), #2b1d12);
+  border: 1px solid var(--ottone);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.postcard-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: var(--ottone);
+}
+
+.postcard-row {
+  font-size: 15px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #4a3722;
+}
+
+.postcard-footer {
+  margin-top: 14px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--crema-scura);
+}
+
+.postcard-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--crema-scura);
+  text-align: center;
+}

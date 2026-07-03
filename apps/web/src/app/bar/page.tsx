@@ -10,6 +10,8 @@ import { EMOTES, type ChatEntry, type DailyGoalsSnapshot, type EmoteType, type S
 import type { BarEngine } from '@/game/engine';
 import type { RoomConnection } from '@/game/net';
 import {
+  BachecaSheet,
+  CartolinaSheet,
   ChatSheet,
   FriendsSheet,
   InventorySheet,
@@ -19,7 +21,7 @@ import {
   type ShopItem,
 } from './sheets';
 
-type OpenSheet = null | 'chat' | 'shop' | 'inventory' | 'profile' | 'friends';
+type OpenSheet = null | 'chat' | 'shop' | 'inventory' | 'profile' | 'friends' | 'bacheca' | 'cartolina';
 
 interface PlacementMode {
   inventoryId: string;
@@ -308,6 +310,12 @@ export default function BarPage() {
           <button className="hud-btn" onClick={() => setSheet('friends')}>
             Amici
           </button>
+          <button className="hud-btn" onClick={() => setSheet('bacheca')}>
+            Bacheca
+          </button>
+          <button className="hud-btn" onClick={() => setSheet('cartolina')}>
+            Cartolina
+          </button>
           {dailyGoals && (
             <div
               className="hud-pill"
@@ -389,6 +397,10 @@ export default function BarPage() {
       )}
       {sheet === 'friends' && (
         <FriendsSheet onlineIds={onlineIds} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'bacheca' && <BachecaSheet onClose={() => setSheet(null)} />}
+      {sheet === 'cartolina' && (
+        <CartolinaSheet username={username} onClose={() => setSheet(null)} />
       )}
 
       {toast && <div className="toast">{toast}</div>}

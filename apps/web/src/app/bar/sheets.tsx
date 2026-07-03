@@ -1,8 +1,8 @@
 'use client';
 
-/** Bottom-sheet mobile-first: chat, shop, inventario, profilo, amici. */
+/** Bottom-sheet mobile-first: chat, shop, inventario, profilo, amici, bacheca, cartolina. */
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { AVATAR_COLOR_SCHEMES, type ChatEntry } from '@barlandia/shared';
+import { AVATAR_COLOR_SCHEMES, type ChatEntry, type DailyGoalsSnapshot, type EventoGiorno } from '@barlandia/shared';
 import { AVATAR_COLORS } from '@/game/palette';
 import { SPRITE_EMOJI } from '@/game/sprites';
 
@@ -436,6 +436,84 @@ export function FriendsSheet({
             </button>
           </div>
         ))}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function BachecaSheet({ onClose }: { onClose: () => void }) {
+  const [oggi, setOggi] = useState<EventoGiorno | null>(null);
+
+  useEffect(() => {
+    fetch('/api/bacheca')
+      .then((r) => r.json() as Promise<{ oggi: EventoGiorno }>)
+      .then((d) => setOggi(d.oggi))
+      .catch(() => setOggi(null));
+  }, []);
+
+  return (
+    <Sheet title="Bacheca" onClose={onClose}>
+      {oggi === null && <div className="inv-empty">Carico…</div>}
+      {oggi && (
+        <div className="event-card">
+          <div className="event-format">{oggi.formato}</div>
+          <div className="event-name">{oggi.nome}</div>
+          <div className="event-goal">{oggi.obiettivo}</div>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+interface Recap {
+  balance: number;
+  dailyGoals: DailyGoalsSnapshot;
+  badgesToday: { id: string; name: string; icon: string }[];
+  presenceMinutesApprox: number;
+  oggi: EventoGiorno;
+}
+
+export function CartolinaSheet({ username, onClose }: { username: string; onClose: () => void }) {
+  const [recap, setRecap] = useState<Recap | null>(null);
+
+  useEffect(() => {
+    fetch('/api/recap')
+      .then((r) => r.json() as Promise<Recap>)
+      .then(setRecap)
+      .catch(() => setRecap(null));
+  }, []);
+
+  const goalsDone = recap
+    ? [
+        recap.dailyGoals.chatCount >= recap.dailyGoals.chatTarget,
+        recap.dailyGoals.presenceTicks >= recap.dailyGoals.presenceTarget,
+        recap.dailyGoals.emoteCount >= recap.dailyGoals.emoteTarget,
+      ].filter(Boolean).length
+    : 0;
+
+  return (
+    <Sheet title="La tua cartolina" onClose={onClose}>
+      {recap === null && <div className="inv-empty">Carico…</div>}
+      {recap && (
+        <div className="postcard">
+          <div className="postcard-title">☕ {username} al Barlandia</div>
+          <div className="postcard-row">🕐 circa {recap.presenceMinutesApprox} min al bar oggi</div>
+          <div className="postcard-row">
+            🎯 {goalsDone}/3 obiettivi del tris di oggi
+          </div>
+          <div className="postcard-row">💰 {recap.balance} Chicchi in tasca</div>
+          {recap.badgesToday.length > 0 && (
+            <div className="postcard-row">
+              🏅 Nuovo oggi: {recap.badgesToday.map((b) => `${b.icon} ${b.name}`).join(', ')}
+            </div>
+          )}
+          <div className="postcard-footer">Stasera al bar: {recap.oggi.nome}</div>
+          <div className="postcard-hint">Fai uno screenshot per condividerla con gli amici!</div>
+        </div>
+      )}
     </Sheet>
   );
 }

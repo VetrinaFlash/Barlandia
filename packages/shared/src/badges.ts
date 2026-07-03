@@ -57,3 +57,17 @@ export async function listAllBadges(db: D1Database): Promise<BadgeInfo[]> {
     .all<BadgeInfo>();
   return rows.results;
 }
+
+/** Badge guadagnati oggi (UTC) — per la cartolina della serata. */
+export async function listBadgesEarnedToday(db: D1Database, userId: string): Promise<BadgeInfo[]> {
+  const rows = await db
+    .prepare(
+      `SELECT b.id, b.name, b.description, b.icon
+       FROM user_badges ub JOIN badges b ON b.id = ub.badge_id
+       WHERE ub.user_id = ?1 AND date(ub.earned_at, 'unixepoch') = date('now')
+       ORDER BY ub.earned_at ASC`,
+    )
+    .bind(userId)
+    .all<BadgeInfo>();
+  return rows.results;
+}
