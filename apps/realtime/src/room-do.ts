@@ -20,14 +20,18 @@ import {
   CURRENCY,
   LIMITS,
   TX_REASONS,
+  awardDailyBonus,
+  bumpDailyGoal,
   creditCurrency,
   getBalance,
+  getDailyGoalsState,
   isInBounds,
   isWalkable,
   tileKey,
   findSpawnTile,
   parseClientMessage,
   type ChatEntry,
+  type EmoteType,
   type Placement,
   type RoomUser,
   type ServerMessage,
@@ -45,6 +49,9 @@ interface ConnState {
   lastActiveAt: number;
   lastMoveAt: number;
   lastChatAt: number;
+  lastEmoteAt: number;
+  /** inventoryId del posto su cui è seduto, se seduto. */
+  seatedOn?: string;
 }
 
 const CHAT_STORAGE_KEY = 'chat_history';
@@ -109,6 +116,7 @@ export class RoomDO implements DurableObject {
       lastActiveAt: now,
       lastMoveAt: 0,
       lastChatAt: 0,
+      lastEmoteAt: 0,
     };
     server.serializeAttachment(state);
 
@@ -117,7 +125,19 @@ export class RoomDO implements DurableObject {
     const chat = ((await this.ctx.storage.get<ChatEntry[]>(CHAT_STORAGE_KEY)) ?? []).slice(
       -LIMITS.chatHistorySize,
     );
-    const balance = await getBalance(this.env.DB, uid);
+    // Bonus giornaliero: se già riscosso oggi ritorna null e leggiamo il
+    // saldo a parte; altrimenti amount/balance arrivano già distinti.
+    let dailyBonusAwarded: number | null = null;
+    let balance: number;
+    try {
+      const daily = await awardDailyBonus(this.env.DB, uid);
+      dailyBonusAwarded = daily?.amount ?? null;
+      balance = daily?.balance ?? (await getBalance(this.env.DB, uid));
+    } catch (e) {
+      console.error('awardDailyBonus fallito', e);
+      balance = await getBalance(this.env.DB, uid);
+    }
+    const dailyGoals = await getDailyGoalsState(this.env.DB, uid);
 
     this.send(server, {
       type: 'welcome',
@@ -126,6 +146,8 @@ export class RoomDO implements DurableObject {
       chat,
       placements: [...placements.values()],
       balance,
+      dailyGoals,
+      dailyBonusAwarded,
     });
     this.broadcast({ type: 'user_joined', user: this.toRoomUser(state) }, server);
 
@@ -169,6 +191,12 @@ export class RoomDO implements DurableObject {
         break;
 
       case 'move': {
+        // camminare implica alzarsi: niente conferma richiesta, come nella
+        // realtà (ti alzi e basta se qualcuno ti chiama dall'altra parte).
+        if (state.seatedOn) {
+          state.seatedOn = undefined;
+          this.broadcast({ type: 'user_stood', userId: state.uid });
+        }
         if (now - state.lastMoveAt < LIMITS.moveMinIntervalMs) {
           // rate-limit silenzioso: il client legittimo non lo supera mai
           break;
@@ -216,6 +244,7 @@ export class RoomDO implements DurableObject {
           .slice(-LIMITS.chatHistorySize);
         await this.ctx.storage.put(CHAT_STORAGE_KEY, history);
         this.broadcast({ type: 'chat', entry });
+        await this.bumpGoalAndNotify(ws, state.uid, 'chat');
         break;
       }
 
@@ -225,6 +254,18 @@ export class RoomDO implements DurableObject {
 
       case 'pickup_item':
         await this.handlePickupItem(ws, state, msg.inventoryId);
+        break;
+
+      case 'sit':
+        await this.handleSit(ws, state, msg.inventoryId);
+        break;
+
+      case 'stand':
+        this.handleStand(ws, state);
+        break;
+
+      case 'emote':
+        await this.handleEmote(ws, state, msg.emote, now);
         break;
     }
 
@@ -284,6 +325,7 @@ export class RoomDO implements DurableObject {
           TX_REASONS.passive,
         );
         this.send(ws, { type: 'currency_earned', amount: CURRENCY.earnAmount, balance });
+        await this.bumpGoalAndNotify(ws, state.uid, 'presence');
       } catch (e) {
         console.error(`accredito passivo fallito per ${state.uid}`, e);
       }
@@ -348,16 +390,17 @@ export class RoomDO implements DurableObject {
     }
 
     const info = await this.env.DB.prepare(
-      `SELECT i.item_id, s.sprite_key FROM inventory i JOIN shop_items s ON s.id = i.item_id
+      `SELECT i.item_id, s.sprite_key, s.category FROM inventory i JOIN shop_items s ON s.id = i.item_id
        WHERE i.id = ?1`,
     )
       .bind(inventoryId)
-      .first<{ item_id: string; sprite_key: string }>();
+      .first<{ item_id: string; sprite_key: string; category: string }>();
 
     const placement: Placement = {
       inventoryId,
       itemId: info?.item_id ?? 'sconosciuto',
       spriteKey: info?.sprite_key ?? 'sgabello',
+      category: info?.category ?? 'decoro',
       ownerId: state.uid,
       x,
       y,
@@ -388,6 +431,82 @@ export class RoomDO implements DurableObject {
     const placements = await this.loadPlacements();
     placements.delete(inventoryId);
     this.broadcast({ type: 'item_removed', inventoryId });
+
+    // se qualcuno era seduto sull'arredo appena rimosso, alzalo
+    for (const other of this.ctx.getWebSockets()) {
+      const st = this.readState(other);
+      if (st?.seatedOn === inventoryId) {
+        st.seatedOn = undefined;
+        other.serializeAttachment(st);
+        this.broadcast({ type: 'user_stood', userId: st.uid });
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Sedersi / alzarsi / emote / tris del giorno
+
+  private async handleSit(ws: WebSocket, state: ConnState, inventoryId: string): Promise<void> {
+    const placements = await this.loadPlacements();
+    const seat = placements.get(inventoryId);
+    if (!seat || seat.category !== 'seduta') {
+      this.send(ws, { type: 'error', code: 'not_seat', message: 'Non ci si può sedere lì' });
+      return;
+    }
+    const distance = Math.max(Math.abs(state.x - seat.x), Math.abs(state.y - seat.y));
+    if (distance > LIMITS.sitMaxDistance) {
+      this.send(ws, { type: 'error', code: 'too_far', message: 'Troppo lontano per sederti' });
+      return;
+    }
+    for (const other of this.ctx.getWebSockets()) {
+      const st = this.readState(other);
+      if (st && st.uid !== state.uid && st.seatedOn === inventoryId) {
+        this.send(ws, { type: 'error', code: 'seat_occupied', message: 'Posto occupato' });
+        return;
+      }
+    }
+    state.seatedOn = inventoryId;
+    state.x = seat.x;
+    state.y = seat.y;
+    this.broadcast({ type: 'user_sat', userId: state.uid, inventoryId, x: seat.x, y: seat.y });
+  }
+
+  private handleStand(ws: WebSocket, state: ConnState): void {
+    if (!state.seatedOn) {
+      this.send(ws, { type: 'error', code: 'not_seated', message: 'Non sei seduto' });
+      return;
+    }
+    state.seatedOn = undefined;
+    this.broadcast({ type: 'user_stood', userId: state.uid });
+  }
+
+  private async handleEmote(
+    ws: WebSocket,
+    state: ConnState,
+    emote: EmoteType,
+    now: number,
+  ): Promise<void> {
+    if (now - state.lastEmoteAt < LIMITS.emoteMinIntervalMs) {
+      this.send(ws, { type: 'error', code: 'rate_limited', message: 'Piano con le emote!' });
+      return;
+    }
+    state.lastEmoteAt = now;
+    this.broadcast({ type: 'emote', userId: state.uid, emote });
+    await this.bumpGoalAndNotify(ws, state.uid, 'emote');
+  }
+
+  /** Incrementa un contatore del tris del giorno e notifica SOLO il mittente. */
+  private async bumpGoalAndNotify(
+    ws: WebSocket,
+    userId: string,
+    kind: 'chat' | 'presence' | 'emote',
+  ): Promise<void> {
+    try {
+      const { state: goals, awarded, balance } = await bumpDailyGoal(this.env.DB, userId, kind);
+      this.send(ws, { type: 'daily_goals_update', goals, rewardAwarded: awarded, balance });
+    } catch (e) {
+      console.error(`bumpDailyGoal(${kind}) fallito per ${userId}`, e);
+    }
   }
 
   /** Cache degli arredi piazzati; dopo l'ibernazione si ricarica da D1. */
@@ -395,7 +514,7 @@ export class RoomDO implements DurableObject {
     if (this.placements) return this.placements;
     const rows = await this.env.DB.prepare(
       `SELECT i.id AS inventoryId, i.item_id AS itemId, s.sprite_key AS spriteKey,
-              i.user_id AS ownerId, i.placed_x AS x, i.placed_y AS y
+              s.category AS category, i.user_id AS ownerId, i.placed_x AS x, i.placed_y AS y
        FROM inventory i JOIN shop_items s ON s.id = i.item_id
        WHERE i.is_placed = 1`,
     ).all<Placement>();
@@ -422,7 +541,14 @@ export class RoomDO implements DurableObject {
   }
 
   private toRoomUser(s: ConnState): RoomUser {
-    return { id: s.uid, username: s.usr, x: s.x, y: s.y, colorScheme: s.cs };
+    return {
+      id: s.uid,
+      username: s.usr,
+      x: s.x,
+      y: s.y,
+      colorScheme: s.cs,
+      ...(s.seatedOn ? { seatedOn: s.seatedOn } : {}),
+    };
   }
 
   private listUsers(): RoomUser[] {

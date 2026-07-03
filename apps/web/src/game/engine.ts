@@ -36,6 +36,8 @@ const WALK_SPEED = 3.2; // tile al secondo
 export interface EngineEvents {
   /** Tap su una tile percorribile (in modalità normale = richiesta move). */
   onTileTap(x: number, y: number): void;
+  /** Tap su un arredo di categoria 'seduta' (tile non percorribile). */
+  onSeatTap(inventoryId: string): void;
 }
 
 export class BarEngine {
@@ -107,9 +109,11 @@ export class BarEngine {
       existing.tile = { x: user.x, y: user.y };
       existing.path = [];
       existing.renderPos = { x: user.x, y: user.y };
+      existing.avatar.setSeated(!!user.seatedOn);
       return;
     }
     const avatar = new Avatar(user.id, user.username, user.colorScheme, user.id === this.selfId);
+    avatar.setSeated(!!user.seatedOn);
     const sprite: UserSprite = {
       avatar,
       tile: { x: user.x, y: user.y },
@@ -120,6 +124,22 @@ export class BarEngine {
     this.users.set(user.id, sprite);
     this.objects.addChild(avatar.view);
     this.placeAvatar(sprite);
+  }
+
+  /** L'utente si è seduto/alzato (evento dedicato dal server). */
+  setUserSeated(uid: string, seated: boolean, tile?: TilePos): void {
+    const u = this.users.get(uid);
+    if (!u) return;
+    u.avatar.setSeated(seated);
+    if (seated && tile) {
+      u.tile = tile;
+      u.path = [];
+      u.renderPos = { x: tile.x, y: tile.y };
+    }
+  }
+
+  showEmote(uid: string, emoji: string): void {
+    this.users.get(uid)?.avatar.emote(emoji);
   }
 
   removeUser(uid: string): void {
@@ -144,6 +164,7 @@ export class BarEngine {
         u.tile = { x: user.x, y: user.y };
         u.renderPos = { x: user.x, y: user.y };
       }
+      u.avatar.setSeated(!!user.seatedOn);
     }
     for (const uid of [...this.users.keys()]) {
       if (!seen.has(uid)) this.removeUser(uid);
@@ -204,6 +225,15 @@ export class BarEngine {
       s.add(tileKey(placement.x, placement.y));
     }
     return s;
+  }
+
+  private seatAt(x: number, y: number): Placement | null {
+    for (const { placement } of this.placements.values()) {
+      if (placement.category === 'seduta' && placement.x === x && placement.y === y) {
+        return placement;
+      }
+    }
+    return null;
   }
 
   // -------------------------------------------------------------------------
@@ -321,7 +351,10 @@ export class BarEngine {
       if (isWalkable(tile.x, tile.y, this.blockedTiles())) {
         this.flashMarker(tile.x, tile.y);
         this.events.onTileTap(tile.x, tile.y);
+        return;
       }
+      const seat = this.seatAt(tile.x, tile.y);
+      if (seat) this.events.onSeatTap(seat.inventoryId);
     };
     app.stage.on('pointerup', end);
     app.stage.on('pointerupoutside', () => {

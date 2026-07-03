@@ -25,16 +25,21 @@ const BUBBLE_STYLE = new TextStyle({
   align: 'center',
 });
 
+const EMOTE_STYLE = new TextStyle({ fontSize: 30 });
+
 export class Avatar {
   readonly view = new Container();
   private body = new Graphics();
   private nameLabel: Text;
   private bubble = new Container();
   private bubbleTimer: ReturnType<typeof setTimeout> | null = null;
+  private emoteText: Text;
+  private emoteTimer: ReturnType<typeof setTimeout> | null = null;
   private direction: Direction = 'S';
   private skin: number;
   private colors: { body: number; accent: number };
   private walkPhase = 0;
+  private seated = false;
   walking = false;
 
   constructor(
@@ -60,6 +65,12 @@ export class Avatar {
     this.bubble.visible = false;
     this.view.addChild(this.bubble);
 
+    this.emoteText = new Text({ text: '', style: EMOTE_STYLE });
+    this.emoteText.anchor.set(0.5, 1);
+    this.emoteText.y = -58;
+    this.emoteText.visible = false;
+    this.view.addChild(this.emoteText);
+
     this.redraw();
   }
 
@@ -68,6 +79,13 @@ export class Avatar {
       this.direction = dir;
       this.redraw();
     }
+  }
+
+  /** Placeholder procedurale per "seduto": silhouette più bassa e compatta. */
+  setSeated(seated: boolean): void {
+    if (this.seated === seated) return;
+    this.seated = seated;
+    this.body.scale.y = seated ? 0.72 : 1;
   }
 
   /** Avanza l'animazione di camminata (bob + oscillazione). dt in secondi. */
@@ -103,8 +121,20 @@ export class Avatar {
     }, 5000);
   }
 
+  /** Emote passeggera: emoji che compare e sparisce sopra l'avatar. */
+  emote(emoji: string): void {
+    if (this.emoteTimer) clearTimeout(this.emoteTimer);
+    this.emoteText.text = emoji;
+    this.emoteText.visible = true;
+    this.emoteText.alpha = 1;
+    this.emoteTimer = setTimeout(() => {
+      this.emoteText.visible = false;
+    }, 1800);
+  }
+
   destroy(): void {
     if (this.bubbleTimer) clearTimeout(this.bubbleTimer);
+    if (this.emoteTimer) clearTimeout(this.emoteTimer);
     this.view.destroy({ children: true });
   }
 

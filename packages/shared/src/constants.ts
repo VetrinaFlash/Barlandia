@@ -25,6 +25,10 @@ export const CURRENCY = {
   idleThresholdMs: 2 * 60 * 1000,
   /** Bonus una tantum alla registrazione. */
   welcomeBonus: 50,
+  /** Bonus giornaliero al primo ingresso del giorno ("il caffè offerto da Bruno"). */
+  dailyBonusAmount: 5,
+  /** Premio per aver completato il tris del giorno. */
+  dailyGoalsReward: 10,
 } as const;
 
 /** Motivi (reason) ammessi nel log currency_transactions. */
@@ -32,7 +36,20 @@ export const TX_REASONS = {
   welcome: 'bonus_benvenuto',
   passive: 'presenza_bar',
   purchase: 'acquisto_shop',
+  daily: 'caffe_giornaliero',
+  dailyGoals: 'tris_del_giorno',
 } as const;
+
+/** Tris del giorno: soglie per completare i 3 obiettivi leggeri. */
+export const DAILY_GOALS = {
+  chatTarget: 3,
+  presenceTarget: 2,
+  emoteTarget: 1,
+} as const;
+
+/** Emote disponibili (Sprint 1: nessuna richiesta/conferma, solo emote singole). */
+export const EMOTES = ['wave', 'cheers', 'dance', 'clap'] as const;
+export type EmoteType = (typeof EMOTES)[number];
 
 /** Limiti di validazione lato server. */
 export const LIMITS = {
@@ -42,6 +59,10 @@ export const LIMITS = {
   chatMinIntervalMs: 500,
   /** Minimo intervallo tra due comandi move dello stesso utente (ms). */
   moveMinIntervalMs: 250,
+  /** Minimo intervallo tra due emote dello stesso utente (ms). */
+  emoteMinIntervalMs: 1500,
+  /** Distanza massima (in tile, Chebyshev) per sedersi su un posto. */
+  sitMaxDistance: 1,
   usernameMin: 3,
   usernameMax: 20,
   passwordMin: 8,

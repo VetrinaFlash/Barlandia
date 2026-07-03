@@ -12,6 +12,8 @@
 
 /// <reference types="@cloudflare/workers-types" />
 
+import { CURRENCY, DAILY_GOALS, TX_REASONS } from './constants';
+
 export interface PurchaseResult {
   ok: boolean;
   error?: 'insufficient_funds' | 'item_not_found';
@@ -117,4 +119,124 @@ export async function getBalance(db: D1Database, userId: string): Promise<number
     .bind(userId)
     .first<{ balance: number }>();
   return row?.balance ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 1 (game design roadmap): bonus giornaliero + tris del giorno.
+// Vedi docs/GAME-DESIGN.md.
+
+function todayUTC(): string {
+  return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
+/**
+ * Accredita il bonus giornaliero al primo ingresso del giorno.
+ * Ritorna { amount, balance }, o null se già riscosso oggi. `amount` è
+ * l'importo del bonus (per il messaggio all'utente), `balance` il saldo
+ * risultante (creditCurrency ritorna il saldo, non il delta — vanno
+ * tenuti distinti per non mostrare per errore il saldo totale come
+ * "importo del bonus" al client).
+ * Atomico via INSERT OR IGNORE su chiave (user_id, claim_date): niente
+ * race tra tab multiple o riconnessioni ravvicinate.
+ */
+export async function awardDailyBonus(
+  db: D1Database,
+  userId: string,
+): Promise<{ amount: number; balance: number } | null> {
+  const claim = await db
+    .prepare(`INSERT OR IGNORE INTO daily_bonus_claims (user_id, claim_date) VALUES (?1, ?2)`)
+    .bind(userId, todayUTC())
+    .run();
+  if ((claim.meta.changes ?? 0) === 0) return null;
+  const amount = CURRENCY.dailyBonusAmount;
+  const balance = await creditCurrency(db, userId, amount, TX_REASONS.daily);
+  return { amount, balance };
+}
+
+export interface DailyGoalsState {
+  chatCount: number;
+  presenceTicks: number;
+  emoteCount: number;
+  rewardClaimed: boolean;
+  chatTarget: number;
+  presenceTarget: number;
+  emoteTarget: number;
+}
+
+export type DailyGoalKind = 'chat' | 'presence' | 'emote';
+
+const GOAL_COLUMN: Record<DailyGoalKind, string> = {
+  chat: 'chat_count',
+  presence: 'presence_ticks',
+  emote: 'emote_count',
+};
+
+export async function getDailyGoalsState(db: D1Database, userId: string): Promise<DailyGoalsState> {
+  const row = await db
+    .prepare(
+      `SELECT chat_count, presence_ticks, emote_count, reward_claimed
+       FROM daily_goals WHERE user_id = ?1 AND goal_date = ?2`,
+    )
+    .bind(userId, todayUTC())
+    .first<{
+      chat_count: number;
+      presence_ticks: number;
+      emote_count: number;
+      reward_claimed: number;
+    }>();
+  return {
+    chatCount: row?.chat_count ?? 0,
+    presenceTicks: row?.presence_ticks ?? 0,
+    emoteCount: row?.emote_count ?? 0,
+    rewardClaimed: (row?.reward_claimed ?? 0) === 1,
+    chatTarget: DAILY_GOALS.chatTarget,
+    presenceTarget: DAILY_GOALS.presenceTarget,
+    emoteTarget: DAILY_GOALS.emoteTarget,
+  };
+}
+
+/**
+ * Incrementa un contatore del tris del giorno (UPDATE atomico, mai
+ * read-then-write) e, se tutte le soglie sono raggiunte, riscuote il
+ * premio una tantum per la giornata. `kind` arriva sempre da un valore
+ * letterale interno (mai dal client), quindi l'uso nel nome colonna è sicuro.
+ */
+export async function bumpDailyGoal(
+  db: D1Database,
+  userId: string,
+  kind: DailyGoalKind,
+): Promise<{ state: DailyGoalsState; awarded: number | null; balance: number | null }> {
+  const column = GOAL_COLUMN[kind];
+  const today = todayUTC();
+  await db
+    .prepare(
+      `INSERT INTO daily_goals (user_id, goal_date, ${column}) VALUES (?1, ?2, 1)
+       ON CONFLICT(user_id, goal_date) DO UPDATE SET ${column} = ${column} + 1`,
+    )
+    .bind(userId, today)
+    .run();
+
+  const claim = await db
+    .prepare(
+      `UPDATE daily_goals SET reward_claimed = 1
+       WHERE user_id = ?1 AND goal_date = ?2 AND reward_claimed = 0
+         AND chat_count >= ?3 AND presence_ticks >= ?4 AND emote_count >= ?5`,
+    )
+    .bind(
+      userId,
+      today,
+      DAILY_GOALS.chatTarget,
+      DAILY_GOALS.presenceTarget,
+      DAILY_GOALS.emoteTarget,
+    )
+    .run();
+
+  let awarded: number | null = null;
+  let balance: number | null = null;
+  if ((claim.meta.changes ?? 0) > 0) {
+    awarded = CURRENCY.dailyGoalsReward;
+    balance = await creditCurrency(db, userId, awarded, TX_REASONS.dailyGoals);
+  }
+
+  return { state: await getDailyGoalsState(db, userId), awarded, balance };
 }

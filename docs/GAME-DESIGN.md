@@ -334,11 +334,13 @@ Regole: prezzi pieni e chiari (92), tutto regalabile (93), zero loot box (94), s
 
 Le fondamenta di questo repo coprono: stanza DO realtime, auth, Chicchi con log, shop atomico, piazzamento arredi, PWA.
 
-**Sprint 1 — "La serata tipo" (retention di base)**
-1. Caffè di benvenuto giornaliero (49) — riusa `creditCurrency`, nuova reason `caffe_giornaliero` con guardia 1/giorno.
-2. Tris del giorno (79) — tabella `daily_goals` + 3 check semplici su eventi già tracciati (chat inviata, minuti presenza, tile percorse).
-3. Sedersi sugli sgabelli (59) — stato `seated` nell'attachment del DO + rendering.
-4. Emote base + brindisi a due (58) — nuovo messaggio WS `emote`, validato come la chat.
+**Sprint 1 — "La serata tipo" (retention di base) — ✅ implementato**
+1. Caffè di benvenuto giornaliero (49) — `awardDailyBonus`, reason `caffe_giornaliero`, guardia atomica 1/giorno via `daily_bonus_claims`.
+2. Tris del giorno (79) — tabella `daily_goals`, 3 obiettivi: chat (3 messaggi), presenza (2 tick del guadagno passivo), emote (1). Premio unico a soglie raggiunte.
+3. Sedersi sugli sgabelli (59) — stato `seatedOn` nell'attachment del DO, tap su arredo categoria `seduta`, occupazione esclusiva, alzata automatica quando ci si muove.
+4. Emote base (58) — messaggio WS `emote` (wave/cheers/dance/clap), validato e rate-limited come la chat. La versione "a due" (richiesta/conferma tra utenti) resta da fare in uno sprint successivo: qui sono emote singole senza handshake.
+
+Dettagli implementativi e compromessi in README, sezione "Sprint 1".
 
 **Sprint 2 — "Le persone" (social graph)**
 5. Amici con presenza (30) + "offrigli un caffè" (31).

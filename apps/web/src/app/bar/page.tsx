@@ -6,7 +6,7 @@
  */
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatEntry, ServerMessage } from '@barlandia/shared';
+import { EMOTES, type ChatEntry, type DailyGoalsSnapshot, type EmoteType, type ServerMessage } from '@barlandia/shared';
 import type { BarEngine } from '@/game/engine';
 import type { RoomConnection } from '@/game/net';
 import { ChatSheet, InventorySheet, ShopSheet, type InventoryItem, type ShopItem } from './sheets';
@@ -17,6 +17,13 @@ interface PlacementMode {
   inventoryId: string;
   name: string;
 }
+
+const EMOTE_EMOJI: Record<EmoteType, string> = {
+  wave: '👋',
+  cheers: '🥂',
+  dance: '💃',
+  clap: '👏',
+};
 
 export default function BarPage() {
   const router = useRouter();
@@ -36,6 +43,8 @@ export default function BarPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [invRefresh, setInvRefresh] = useState(0);
   const [connStatus, setConnStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+  const [seated, setSeated] = useState(false);
+  const [dailyGoals, setDailyGoals] = useState<DailyGoalsSnapshot | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setSheet = useCallback((s: OpenSheet) => {
@@ -90,6 +99,10 @@ export default function BarPage() {
             conn.send({ type: 'move', targetX: x, targetY: y });
           }
         },
+        onSeatTap: (inventoryId) => {
+          if (placementRef.current) return; // in modalità piazzamento non ci si siede
+          connRef.current?.send({ type: 'sit', inventoryId });
+        },
       });
       engineRef.current = engine;
       engine.setSelf(me.user.id);
@@ -110,6 +123,11 @@ export default function BarPage() {
               eng.setPlacements(msg.placements);
               setMessages(msg.chat);
               setBalance(msg.balance);
+              setSeated(!!msg.self.seatedOn);
+              setDailyGoals(msg.dailyGoals);
+              if (msg.dailyBonusAwarded !== null) {
+                showToast(`Il caffè di oggi è offerto dalla casa: +${msg.dailyBonusAwarded} Chicchi ☕`);
+              }
               break;
             case 'user_joined':
               eng.upsertUser(msg.user);
@@ -142,6 +160,24 @@ export default function BarPage() {
             case 'currency_earned':
               setBalance(msg.balance);
               showToast(`+${msg.amount} Chicco per la tua presenza ☕`);
+              break;
+            case 'user_sat':
+              eng.setUserSeated(msg.userId, true, { x: msg.x, y: msg.y });
+              if (msg.userId === selfIdRef.current) setSeated(true);
+              break;
+            case 'user_stood':
+              eng.setUserSeated(msg.userId, false);
+              if (msg.userId === selfIdRef.current) setSeated(false);
+              break;
+            case 'emote':
+              eng.showEmote(msg.userId, EMOTE_EMOJI[msg.emote]);
+              break;
+            case 'daily_goals_update':
+              setDailyGoals(msg.goals);
+              if (msg.rewardAwarded !== null) {
+                if (msg.balance !== null) setBalance(msg.balance);
+                showToast(`Tris del giorno completato: +${msg.rewardAwarded} Chicchi 🎉`);
+              }
               break;
             case 'error':
               showToast(msg.message);
@@ -193,6 +229,14 @@ export default function BarPage() {
     connRef.current?.send({ type: 'chat', text });
   }
 
+  function sendEmote(emote: EmoteType) {
+    connRef.current?.send({ type: 'emote', emote });
+  }
+
+  function standUp() {
+    connRef.current?.send({ type: 'stand' });
+  }
+
   async function logout() {
     if (!confirm('Vuoi uscire dal bar?')) return;
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -219,7 +263,40 @@ export default function BarPage() {
           <button className="hud-btn" onClick={() => setSheet('inventory')}>
             Zaino
           </button>
+          {dailyGoals && (
+            <div
+              className="hud-pill"
+              title={`Tris del giorno — chat: ${dailyGoals.chatCount}/${dailyGoals.chatTarget}, presenza: ${dailyGoals.presenceTicks}/${dailyGoals.presenceTarget}, emote: ${dailyGoals.emoteCount}/${dailyGoals.emoteTarget}`}
+            >
+              🎯{' '}
+              {[
+                dailyGoals.chatCount >= dailyGoals.chatTarget,
+                dailyGoals.presenceTicks >= dailyGoals.presenceTarget,
+                dailyGoals.emoteCount >= dailyGoals.emoteTarget,
+              ].filter(Boolean).length}
+              /3
+            </div>
+          )}
         </div>
+      </div>
+
+      <div className="hud-bottom-actions">
+        {EMOTES.map((e) => (
+          <button
+            key={e}
+            className="emote-btn"
+            onClick={() => sendEmote(e)}
+            title={e}
+            aria-label={`Emote ${e}`}
+          >
+            {EMOTE_EMOJI[e]}
+          </button>
+        ))}
+        {seated && (
+          <button className="hud-btn" onClick={standUp}>
+            Alzati
+          </button>
+        )}
       </div>
 
       {placement && (

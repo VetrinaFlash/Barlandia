@@ -5,6 +5,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  bumpDailyGoal,
   creditCurrency,
   getBalance,
   purchaseItem,
@@ -271,5 +272,143 @@ describe('Piazzamento arredi via WS', () => {
 
     wsDario.ws.close();
     wsElena.ws.close();
+  });
+});
+
+describe('Bonus giornaliero', () => {
+  beforeAll(async () => {
+    await makeUser('u-fabio', 'fabio');
+  });
+
+  it('si accredita al primo ingresso del giorno, non al secondo', async () => {
+    const ws1 = await connect('u-fabio', 'fabio');
+    const welcome1 = (await nextMessage(ws1, (m) => m.type === 'welcome')) as Extract<
+      ServerMessage,
+      { type: 'welcome' }
+    >;
+    expect(welcome1.dailyBonusAwarded).toBe(5);
+    expect(welcome1.balance).toBe(5);
+    ws1.ws.close();
+
+    const ws2 = await connect('u-fabio', 'fabio');
+    const welcome2 = (await nextMessage(ws2, (m) => m.type === 'welcome')) as Extract<
+      ServerMessage,
+      { type: 'welcome' }
+    >;
+    expect(welcome2.dailyBonusAwarded).toBeNull();
+    expect(welcome2.balance).toBe(5); // invariato: niente doppio accredito
+    ws2.ws.close();
+  });
+});
+
+describe('Tris del giorno', () => {
+  beforeAll(async () => {
+    await makeUser('u-giulia', 'giulia');
+  });
+
+  it('chat ed emote incrementano i goal; le emote sono rate-limited; il tris completo paga il premio', async () => {
+    const ws = await connect('u-giulia', 'giulia');
+    await nextMessage(ws, (m) => m.type === 'welcome');
+
+    // 3 messaggi chat → soddisfano il goal 'chat' (target 3)
+    for (let i = 0; i < 3; i++) {
+      const updPromise = nextMessage(ws, (m) => m.type === 'daily_goals_update');
+      ws.ws.send(JSON.stringify({ type: 'chat', text: `messaggio ${i}` }));
+      await updPromise;
+      await new Promise((r) => setTimeout(r, 550)); // > chatMinIntervalMs
+    }
+
+    // 1 emote → soddisfa il goal 'emote' (target 1)
+    const emoteUpdPromise = nextMessage(ws, (m) => m.type === 'daily_goals_update');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'wave' }));
+    const goalsAfterEmote = (await emoteUpdPromise) as Extract<
+      ServerMessage,
+      { type: 'daily_goals_update' }
+    >;
+    expect(goalsAfterEmote.goals.chatCount).toBe(3);
+    expect(goalsAfterEmote.goals.emoteCount).toBe(1);
+    expect(goalsAfterEmote.rewardAwarded).toBeNull(); // manca ancora 'presence'
+
+    // una seconda emote troppo ravvicinata viene rifiutata (rate-limit)
+    const rateLimitPromise = nextMessage(ws, (m) => m.type === 'error');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'clap' }));
+    const rateLimitErr = (await rateLimitPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(rateLimitErr.code).toBe('rate_limited');
+
+    // 'presence' si accredita dall'alarm periodico: lo simuliamo chiamando
+    // direttamente la stessa funzione D1 che usa l'alarm (vedi bumpGoalAndNotify)
+    await bumpDailyGoal(env.DB, 'u-giulia', 'presence');
+    const final = await bumpDailyGoal(env.DB, 'u-giulia', 'presence'); // target 2 → completo
+    expect(final.state.rewardClaimed).toBe(true);
+    expect(final.awarded).toBe(10);
+    expect(final.balance).not.toBeNull();
+
+    // riscosso una volta sola: un'ulteriore chiamata non paga di nuovo
+    const again = await bumpDailyGoal(env.DB, 'u-giulia', 'presence');
+    expect(again.awarded).toBeNull();
+
+    ws.ws.close();
+  });
+});
+
+describe('Sedersi su un arredo', () => {
+  beforeAll(async () => {
+    await makeUser('u-marco', 'marco');
+    await makeUser('u-nadia', 'nadia');
+    await creditCurrency(env.DB, 'u-marco', 100, 'bonus_test');
+  });
+
+  it('sedersi vicino a uno sgabello, occupazione esclusiva, alzata automatica su move', async () => {
+    const buy = await purchaseItem(env.DB, 'u-marco', 'sgabello');
+    expect(buy.ok).toBe(true);
+    const invId = buy.inventoryId as string;
+
+    const wsMarco = await connect('u-marco', 'marco');
+    await nextMessage(wsMarco, (m) => m.type === 'welcome');
+    const wsNadia = await connect('u-nadia', 'nadia');
+    await nextMessage(wsNadia, (m) => m.type === 'welcome');
+
+    // Nadia si allontana, così il test "troppo lontano" è indipendente
+    // dall'algoritmo di spawn (che potrebbe metterla vicino per caso)
+    const nadiaMovedPromise = nextMessage(wsNadia, (m) => m.type === 'user_moved');
+    wsNadia.ws.send(JSON.stringify({ type: 'move', targetX: 10, targetY: 10 }));
+    await nadiaMovedPromise;
+
+    // sgabello piazzato adiacente allo spawn di Marco
+    const seatTile = { x: SPAWN.x, y: SPAWN.y - 1 };
+    const placedPromise = nextMessage(wsNadia, (m) => m.type === 'item_placed');
+    wsMarco.ws.send(
+      JSON.stringify({ type: 'place_item', inventoryId: invId, x: seatTile.x, y: seatTile.y }),
+    );
+    await placedPromise;
+
+    // troppo lontano: rifiutato
+    const tooFarPromise = nextMessage(wsNadia, (m) => m.type === 'error');
+    wsNadia.ws.send(JSON.stringify({ type: 'sit', inventoryId: invId }));
+    const tooFar = (await tooFarPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(tooFar.code).toBe('too_far');
+
+    // Marco si siede (è adiacente)
+    const satPromise = nextMessage(wsNadia, (m) => m.type === 'user_sat');
+    wsMarco.ws.send(JSON.stringify({ type: 'sit', inventoryId: invId }));
+    const sat = (await satPromise) as Extract<ServerMessage, { type: 'user_sat' }>;
+    expect(sat.userId).toBe('u-marco');
+    expect(sat.x).toBe(seatTile.x);
+    expect(sat.y).toBe(seatTile.y);
+
+    // Marco cammina via → si alza automaticamente (broadcast a Nadia)
+    const stoodPromise = nextMessage(wsNadia, (m) => m.type === 'user_stood');
+    wsMarco.ws.send(JSON.stringify({ type: 'move', targetX: 5, targetY: 5 }));
+    const stood = (await stoodPromise) as Extract<ServerMessage, { type: 'user_stood' }>;
+    expect(stood.userId).toBe('u-marco');
+
+    // alzarsi di nuovo (già in piedi) → errore
+    const notSeatedPromise = nextMessage(wsMarco, (m) => m.type === 'error');
+    wsMarco.ws.send(JSON.stringify({ type: 'stand' }));
+    const notSeated = (await notSeatedPromise) as Extract<ServerMessage, { type: 'error' }>;
+    expect(notSeated.code).toBe('not_seated');
+
+    wsMarco.ws.close();
+    wsNadia.ws.close();
   });
 });

@@ -171,8 +171,10 @@ input {
   left: 0;
   right: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 10px 12px;
   padding-top: calc(10px + env(safe-area-inset-top));
   pointer-events: none;
@@ -194,6 +196,10 @@ input {
   font-weight: 700;
   font-size: 15px;
   backdrop-filter: blur(6px);
+  max-width: 55vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hud-balance .chicco {
@@ -202,6 +208,8 @@ input {
 
 .hud-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -341,6 +349,38 @@ input {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0 16px 16px;
+}
+
+/* riga emote + "alzati", appena sopra la chat bar */
+.hud-bottom-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(58px + env(safe-area-inset-bottom));
+  z-index: 11;
+  display: flex;
+  gap: 8px;
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+.hud-bottom-actions > * {
+  pointer-events: auto;
+}
+
+.emote-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(43, 29, 18, 0.85);
+  border: 1px solid #55402c;
+  font-size: 19px;
+  line-height: 1;
+  backdrop-filter: blur(6px);
+}
+
+.emote-btn:active {
+  background: var(--terracotta);
 }
 
 /* chat bar sempre visibile in basso */

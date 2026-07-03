@@ -1,6 +1,6 @@
 # ☕ Barlandia
 
-Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un **bar/locale** (niente corridoi né stanze d'albergo). Questo repo contiene la **Fase 1** (fondamenta multiplayer: stanza unica, tap-to-move, chat realtime, auth, PWA) e la **Fase 2 parziale** (valuta "Chicchi" con guadagno passivo + shop di arredi con piazzamento realtime).
+Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un **bar/locale** (niente corridoi né stanze d'albergo). Questo repo contiene la **Fase 1** (fondamenta multiplayer: stanza unica, tap-to-move, chat realtime, auth, PWA), la **Fase 2 parziale** (valuta "Chicchi" con guadagno passivo + shop di arredi con piazzamento realtime) e lo **Sprint 1** della roadmap di game design (`docs/GAME-DESIGN.md`): bonus giornaliero, tris del giorno, sedersi sugli arredi, emote.
 
 **Fuori scope in questa fase** (previsto in fasi successive): trading tra utenti, valuta a pagamento, rarità/drop, più ambienti, minigiochi, amici/badge.
 
@@ -16,7 +16,7 @@ Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un
 apps/web         App Next.js (UI, auth, API shop/valuta) → Cloudflare Workers (OpenNext)
 apps/realtime    Worker + RoomDO (Durable Object della stanza) → Cloudflare Workers
 packages/shared  Protocollo WS, layout stanza, pathfinding, token, password, logica valuta
-migrations/      Migration D1 (schema completo Fase 1+2 + seed catalogo shop)
+migrations/      Migration D1 (schema Fase 1+2 + seed shop + tabelle Sprint 1)
 ```
 
 Entrambe le app sono Worker Cloudflare distinti (`barlandia` per il web, `barlandia-realtime` per il realtime), deployati separatamente ma nello stesso account e sullo stesso D1.
@@ -46,6 +46,17 @@ Worker "barlandia-realtime" ── verifica token ──► RoomDO (hibernation 
 Scelta: **caffè italiano vintage** — crema/sabbia per il pavimento a scacchi, legno espresso e ottone per il bancone, accenti terracotta/salvia, insegne al neon caldo. Il logo/mascotte (tazzina sorridente sullo sgabello, `apps/web/public/brand/`) è già su questa palette, quindi tutto il locale la segue.
 
 Perché non un tileset CC0: dal sandbox di build i download da kenney.nl/itch.io non erano raggiungibili, quindi gli asset sono **placeholder procedurali** (vettoriali, disegnati con PixiJS Graphics) coerenti con la palette — vedi `apps/web/src/game/sprites.ts` e `palette.ts`. Per passare a un tileset CC0 (consigliato: un pack "interior" di Kenney ri-arredato a bar) basta sostituire le funzioni di disegno con Sprite/texture mantenendo gli stessi `sprite_key` del catalogo: il resto del gioco non cambia. Cambiare stile = cambiare `palette.ts` + `sprites.ts`, nient'altro.
+
+## Sprint 1 (game design) — bonus giornaliero, tris del giorno, sedersi, emote
+
+Prima incrementale della roadmap in `docs/GAME-DESIGN.md`, costruita sopra le fondamenta di Fase 1+2 senza toccarne le invarianti (stessa `currency.ts` come unico punto di scrittura su `wallets.balance`).
+
+- **Bonus giornaliero** (`daily_bonus_claims`): +5 Chicchi al primo ingresso di ogni giorno (UTC), accreditato nel `welcome` del RoomDO. Atomico via `INSERT OR IGNORE` sulla chiave `(user_id, claim_date)` — niente doppio accredito da tab multiple o riconnessioni ravvicinate.
+- **Tris del giorno** (`daily_goals`): 3 obiettivi leggeri — 3 messaggi in chat, 2 tick di guadagno passivo (~10 min di presenza attiva), 1 emote. Premio di +10 Chicchi una tantum al giorno, riscosso con un `UPDATE ... WHERE reward_claimed = 0 AND <soglie>` atomico (mai read-then-write). Il client mostra il progresso in una pillola HUD (🎯 n/3).
+- **Sedersi**: tap su un arredo di categoria `seduta` (es. sgabello) entro 1 tile di distanza → l'avatar si siede lì, posto esclusivo (un occupante alla volta), si alza automaticamente se cammina altrove o se l'arredo viene rimosso da sotto di lui. Placeholder visivo: silhouette più bassa (nessun redesign dello sprite).
+- **Emote**: 4 emote base (👋🥂💃👏) senza richiesta/conferma — quella è prevista in uno sprint successivo insieme al social graph. Rate-limited come la chat, broadcast a tutta la stanza, contano per il tris del giorno.
+
+**Compromesso dichiarato**: `awardDailyBonus`/`bumpDailyGoal` ritornano esplicitamente `{ amount, balance }` separati proprio perché `creditCurrency` ritorna il saldo totale, non il delta — un bug reale emerso in fase di test (il client mostrava il saldo intero come "importo del bonus") prima di essere corretto. Se in futuro si aggiungono altri accrediti automatici, tenere questa distinzione.
 
 ## Setup locale
 
@@ -203,7 +214,7 @@ Questa è la parte da auditare prima di introdurre il trading (fase futura).
 
 ## Protocollo WebSocket (riassunto)
 
-Client→server: `move {targetX,targetY}` · `chat {text}` · `heartbeat` · `place_item {inventoryId,x,y}` · `pickup_item {inventoryId}`
-Server→client: `welcome {self,users,chat,placements,balance}` · `user_joined/left` · `user_moved` · `chat {entry}` · `state_sync {users}` · `item_placed/removed` · `currency_earned {amount,balance}` · `error {code,message}`
+Client→server: `move {targetX,targetY}` · `chat {text}` · `heartbeat` · `place_item {inventoryId,x,y}` · `pickup_item {inventoryId}` · `sit {inventoryId}` · `stand` · `emote {emote}`
+Server→client: `welcome {self,users,chat,placements,balance,dailyGoals,dailyBonusAwarded}` · `user_joined/left` · `user_moved` · `chat {entry}` · `state_sync {users}` · `item_placed/removed` · `currency_earned {amount,balance}` · `user_sat/stood` · `emote {userId,emote}` · `daily_goals_update {goals,rewardAwarded,balance}` · `error {code,message}`
 
 Definizioni e parsing difensivo in `packages/shared/src/protocol.ts`.
