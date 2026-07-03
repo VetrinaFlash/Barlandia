@@ -1,9 +1,14 @@
 'use client';
 
-/** Bottom-sheet mobile-first: chat, shop e inventario. */
+/** Bottom-sheet mobile-first: chat, shop, inventario, profilo, amici. */
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import type { ChatEntry } from '@barlandia/shared';
+import { AVATAR_COLOR_SCHEMES, type ChatEntry } from '@barlandia/shared';
+import { AVATAR_COLORS } from '@/game/palette';
 import { SPRITE_EMOJI } from '@/game/sprites';
+
+function hex(n: number): string {
+  return `#${n.toString(16).padStart(6, '0')}`;
+}
 
 export function Sheet({
   title,
@@ -228,6 +233,209 @@ export function InventorySheet({
           ))}
         </div>
       )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+}
+
+export function ProfileSheet({
+  username,
+  colorScheme,
+  onColorChange,
+  onClose,
+}: {
+  username: string;
+  colorScheme: string;
+  onColorChange: (scheme: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [badges, setBadges] = useState<Badge[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/profile')
+      .then((r) => r.json() as Promise<{ badges: Badge[] }>)
+      .then((d) => setBadges(d.badges))
+      .catch(() => setBadges([]));
+  }, []);
+
+  return (
+    <Sheet title={`Profilo di ${username}`} onClose={onClose}>
+      <div className="profile-section-title">Colore avatar</div>
+      <div className="color-picker">
+        {AVATAR_COLOR_SCHEMES.map((scheme) => (
+          <button
+            key={scheme}
+            className={`color-swatch${scheme === colorScheme ? ' active' : ''}`}
+            style={{ background: hex(AVATAR_COLORS[scheme]?.body ?? 0xc65f3d) }}
+            disabled={busy}
+            aria-label={scheme}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onColorChange(scheme);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="profile-section-title">Badge</div>
+      {badges === null && <div className="inv-empty">Carico…</div>}
+      {badges && (
+        <div className="badge-grid">
+          {badges.map((b) => (
+            <div className={`badge-card${b.earned ? '' : ' locked'}`} key={b.id} title={b.description}>
+              <div className="badge-icon">{b.icon}</div>
+              <div className="badge-name">{b.name}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface Friend {
+  id: string;
+  username: string;
+  colorScheme: string;
+}
+
+export function FriendsSheet({
+  onlineIds,
+  onClose,
+}: {
+  onlineIds: Set<string>;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] } | null>(
+    null,
+  );
+  const [username, setUsername] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/friends')
+      .then((r) => r.json() as Promise<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }>)
+      .then(setData)
+      .catch(() => setData({ friends: [], incoming: [], outgoing: [] }));
+  }, [refresh]);
+
+  async function sendRequest(e: FormEvent) {
+    e.preventDefault();
+    const u = username.trim();
+    if (!u) return;
+    const res = await fetch('/api/friends', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u }),
+    });
+    const body = (await res.json()) as { message?: string; alreadyFriends?: boolean };
+    if (!res.ok) {
+      setMessage(body.message ?? 'Richiesta non riuscita');
+    } else {
+      setMessage(body.alreadyFriends ? 'Siete già amici' : `Richiesta inviata a ${u}`);
+      setUsername('');
+      setRefresh((n) => n + 1);
+    }
+  }
+
+  async function respond(friendId: string) {
+    await fetch('/api/friends/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendId }),
+    });
+    setRefresh((n) => n + 1);
+  }
+
+  async function remove(friendId: string) {
+    await fetch('/api/friends/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendId }),
+    });
+    setRefresh((n) => n + 1);
+  }
+
+  return (
+    <Sheet title="Amici" onClose={onClose}>
+      <form className="friend-add-row" onSubmit={sendRequest}>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Username da aggiungere…"
+          maxLength={20}
+        />
+        <button className="shop-buy" type="submit">
+          Aggiungi
+        </button>
+      </form>
+      {message && <div className="inv-empty">{message}</div>}
+
+      {data && data.incoming.length > 0 && (
+        <>
+          <div className="profile-section-title">Richieste ricevute</div>
+          {data.incoming.map((f) => (
+            <div className="friend-row" key={f.id}>
+              <span>{f.username}</span>
+              <div className="friend-row-actions">
+                <button className="shop-buy" onClick={() => respond(f.id)}>
+                  Accetta
+                </button>
+                <button className="shop-buy secondary" onClick={() => remove(f.id)}>
+                  Rifiuta
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {data && data.outgoing.length > 0 && (
+        <>
+          <div className="profile-section-title">Richieste inviate</div>
+          {data.outgoing.map((f) => (
+            <div className="friend-row" key={f.id}>
+              <span>{f.username}</span>
+              <span className="friend-pending">in attesa…</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      <div className="profile-section-title">I tuoi amici</div>
+      {data === null && <div className="inv-empty">Carico…</div>}
+      {data && data.friends.length === 0 && (
+        <div className="inv-empty">Nessun amico ancora: aggiungine uno per username!</div>
+      )}
+      {data &&
+        data.friends.map((f) => (
+          <div className="friend-row" key={f.id}>
+            <span>
+              <span className={`friend-dot${onlineIds.has(f.id) ? ' online' : ''}`} />
+              {f.username}
+            </span>
+            <button className="shop-buy secondary" onClick={() => remove(f.id)}>
+              Rimuovi
+            </button>
+          </div>
+        ))}
     </Sheet>
   );
 }

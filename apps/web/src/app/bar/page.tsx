@@ -9,9 +9,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMOTES, type ChatEntry, type DailyGoalsSnapshot, type EmoteType, type ServerMessage } from '@barlandia/shared';
 import type { BarEngine } from '@/game/engine';
 import type { RoomConnection } from '@/game/net';
-import { ChatSheet, InventorySheet, ShopSheet, type InventoryItem, type ShopItem } from './sheets';
+import {
+  ChatSheet,
+  FriendsSheet,
+  InventorySheet,
+  ProfileSheet,
+  ShopSheet,
+  type InventoryItem,
+  type ShopItem,
+} from './sheets';
 
-type OpenSheet = null | 'chat' | 'shop' | 'inventory';
+type OpenSheet = null | 'chat' | 'shop' | 'inventory' | 'profile' | 'friends';
 
 interface PlacementMode {
   inventoryId: string;
@@ -35,6 +43,7 @@ export default function BarPage() {
   const selfIdRef = useRef('');
 
   const [username, setUsername] = useState('');
+  const [colorScheme, setColorScheme] = useState('terracotta');
   const [balance, setBalance] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -45,6 +54,7 @@ export default function BarPage() {
   const [connStatus, setConnStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [seated, setSeated] = useState(false);
   const [dailyGoals, setDailyGoals] = useState<DailyGoalsSnapshot | null>(null);
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setSheet = useCallback((s: OpenSheet) => {
@@ -75,11 +85,12 @@ export default function BarPage() {
         return;
       }
       const me = (await meRes.json()) as {
-        user: { id: string; username: string };
+        user: { id: string; username: string; colorScheme: string };
         balance: number;
       };
       if (cancelled) return;
       setUsername(me.user.username);
+      setColorScheme(me.user.colorScheme);
       setBalance(me.balance);
       selfIdRef.current = me.user.id;
 
@@ -125,21 +136,29 @@ export default function BarPage() {
               setBalance(msg.balance);
               setSeated(!!msg.self.seatedOn);
               setDailyGoals(msg.dailyGoals);
+              setOnlineIds(new Set(msg.users.map((u) => u.id).concat(msg.self.id)));
               if (msg.dailyBonusAwarded !== null) {
                 showToast(`Il caffè di oggi è offerto dalla casa: +${msg.dailyBonusAwarded} Chicchi ☕`);
               }
               break;
             case 'user_joined':
               eng.upsertUser(msg.user);
+              setOnlineIds((prev) => new Set(prev).add(msg.user.id));
               break;
             case 'user_left':
               eng.removeUser(msg.userId);
+              setOnlineIds((prev) => {
+                const next = new Set(prev);
+                next.delete(msg.userId);
+                return next;
+              });
               break;
             case 'user_moved':
               eng.walkUserTo(msg.userId, { x: msg.targetX, y: msg.targetY });
               break;
             case 'state_sync':
               eng.syncUsers(msg.users);
+              setOnlineIds(new Set(msg.users.map((u) => u.id)));
               break;
             case 'chat':
               eng.showBubble(msg.entry.userId, msg.entry.text);
@@ -178,6 +197,9 @@ export default function BarPage() {
                 if (msg.balance !== null) setBalance(msg.balance);
                 showToast(`Tris del giorno completato: +${msg.rewardAwarded} Chicchi 🎉`);
               }
+              break;
+            case 'badge_earned':
+              showToast(`Nuovo badge: ${msg.icon} ${msg.name}!`);
               break;
             case 'error':
               showToast(msg.message);
@@ -237,6 +259,23 @@ export default function BarPage() {
     connRef.current?.send({ type: 'stand' });
   }
 
+  async function onColorChange(scheme: string) {
+    const res = await fetch('/api/avatar', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ colorScheme: scheme }),
+    });
+    if (!res.ok) {
+      showToast('Cambio colore non riuscito');
+      return;
+    }
+    setColorScheme(scheme);
+    // il colore è firmato nel token rt: riconnettiamo per farlo arrivare
+    // subito agli altri utenti (breve sparizione/riapparizione visibile)
+    connRef.current?.stop();
+    await connRef.current?.start();
+  }
+
   async function logout() {
     if (!confirm('Vuoi uscire dal bar?')) return;
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -262,6 +301,12 @@ export default function BarPage() {
           </button>
           <button className="hud-btn" onClick={() => setSheet('inventory')}>
             Zaino
+          </button>
+          <button className="hud-btn" onClick={() => setSheet('profile')}>
+            Profilo
+          </button>
+          <button className="hud-btn" onClick={() => setSheet('friends')}>
+            Amici
           </button>
           {dailyGoals && (
             <div
@@ -333,6 +378,17 @@ export default function BarPage() {
           onClose={() => setSheet(null)}
           refreshKey={invRefresh}
         />
+      )}
+      {sheet === 'profile' && (
+        <ProfileSheet
+          username={username}
+          colorScheme={colorScheme}
+          onColorChange={onColorChange}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === 'friends' && (
+        <FriendsSheet onlineIds={onlineIds} onClose={() => setSheet(null)} />
       )}
 
       {toast && <div className="toast">{toast}</div>}

@@ -1,8 +1,8 @@
 # ☕ Barlandia
 
-Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un **bar/locale** (niente corridoi né stanze d'albergo). Questo repo contiene la **Fase 1** (fondamenta multiplayer: stanza unica, tap-to-move, chat realtime, auth, PWA), la **Fase 2 parziale** (valuta "Chicchi" con guadagno passivo + shop di arredi con piazzamento realtime) e lo **Sprint 1** della roadmap di game design (`docs/GAME-DESIGN.md`): bonus giornaliero, tris del giorno, sedersi sugli arredi, emote.
+Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un **bar/locale** (niente corridoi né stanze d'albergo). Questo repo contiene la **Fase 1** (fondamenta multiplayer: stanza unica, tap-to-move, chat realtime, auth, PWA), la **Fase 2 parziale** (valuta "Chicchi" con guadagno passivo + shop di arredi con piazzamento realtime) e gli **Sprint 1-2** della roadmap di game design (`docs/GAME-DESIGN.md`): bonus giornaliero, tris del giorno, sedersi sugli arredi, emote, amici, badge, editor avatar (solo colore).
 
-**Fuori scope in questa fase** (previsto in fasi successive): trading tra utenti, valuta a pagamento, rarità/drop, più ambienti, minigiochi, amici/badge.
+**Fuori scope in questa fase** (previsto in fasi successive): **trading tra utenti in ogni forma** (inclusi regali di valuta P2P come "offrigli un caffè" — vedi sezione Sprint 2), valuta a pagamento, rarità/drop, più ambienti, minigiochi, palinsesto eventi.
 
 **Stack**: Next.js 15 (Cloudflare Workers via OpenNext) · Durable Objects (WebSocket Hibernation) · D1 · PixiJS 8.
 
@@ -16,7 +16,7 @@ Social game mobile-first in italiano, ispirato a Habbo Hotel ma ambientato in un
 apps/web         App Next.js (UI, auth, API shop/valuta) → Cloudflare Workers (OpenNext)
 apps/realtime    Worker + RoomDO (Durable Object della stanza) → Cloudflare Workers
 packages/shared  Protocollo WS, layout stanza, pathfinding, token, password, logica valuta
-migrations/      Migration D1 (schema Fase 1+2 + seed shop + tabelle Sprint 1)
+migrations/      Migration D1 (schema Fase 1+2 + seed shop + tabelle Sprint 1-2)
 ```
 
 Entrambe le app sono Worker Cloudflare distinti (`barlandia` per il web, `barlandia-realtime` per il realtime), deployati separatamente ma nello stesso account e sullo stesso D1.
@@ -57,6 +57,14 @@ Prima incrementale della roadmap in `docs/GAME-DESIGN.md`, costruita sopra le fo
 - **Emote**: 4 emote base (👋🥂💃👏) senza richiesta/conferma — quella è prevista in uno sprint successivo insieme al social graph. Rate-limited come la chat, broadcast a tutta la stanza, contano per il tris del giorno.
 
 **Compromesso dichiarato**: `awardDailyBonus`/`bumpDailyGoal` ritornano esplicitamente `{ amount, balance }` separati proprio perché `creditCurrency` ritorna il saldo totale, non il delta — un bug reale emerso in fase di test (il client mostrava il saldo intero come "importo del bonus") prima di essere corretto. Se in futuro si aggiungono altri accrediti automatici, tenere questa distinzione.
+
+## Sprint 2 (game design) — amici, badge, editor avatar
+
+Seconda incrementale della roadmap. **Deliberatamente incompleto**: "offrigli un caffè tra amici" (che pure è nella roadmap) non è implementato perché è un trasferimento di valuta P2P — la stessa categoria di operazione (trading) che l'handoff originale mette esplicitamente fuori scope fino a una fase di audit dedicata, anche quando si presenta come "regalo" unidirezionale invece che scambio bidirezionale.
+
+- **Amici** (`friendships`, riga unica per coppia con ordinamento canonico `user_a < user_b`): richiesta per username, accetta/rifiuta, rimuovi. La presenza ("chi è online") **non usa nessuna infrastruttura nuova**: è calcolata lato client dalla lista utenti già ricevuta via WebSocket (`welcome`/`user_joined`/`user_left`/`state_sync`) — dato che c'è una sola stanza globale, "online" coincide esattamente con "connesso al Durable Object", che ogni client vede già.
+- **Badge** (`badges` + `user_badges`, assegnazione idempotente via `awardBadge`/INSERT OR IGNORE): `primi_100` alla registrazione (best-effort su `COUNT(*)`, non serve precisione assoluta sotto registrazioni concorrenti per un badge cosmetico), `prima_serata` al primo tris del giorno completato, `primo_brindisi` alla prima emote `cheers`. Mai valuta coinvolta.
+- **Editor avatar**: solo colore per ora, sui 6 schemi già esistenti (`AVATAR_COLOR_SCHEMES`). Il colore è firmato nel cookie di sessione (evita una query D1 a ogni richiesta): `PATCH /api/avatar` riemette il cookie con il nuovo valore, e il client forza una riconnessione WebSocket subito dopo così il cambiamento è visibile agli altri utenti senza dover aspettare un nuovo login. **Compromesso dichiarato**: la riconnessione causa una breve sparizione/riapparizione dell'avatar per gli altri utenti (non c'è un messaggio WS dedicato "aggiorna solo il colore") — accettabile per un'azione rara come cambiare colore, da rivedere se in futuro l'editor si espande a più parti dell'avatar.
 
 ## Setup locale
 
@@ -215,6 +223,8 @@ Questa è la parte da auditare prima di introdurre il trading (fase futura).
 ## Protocollo WebSocket (riassunto)
 
 Client→server: `move {targetX,targetY}` · `chat {text}` · `heartbeat` · `place_item {inventoryId,x,y}` · `pickup_item {inventoryId}` · `sit {inventoryId}` · `stand` · `emote {emote}`
-Server→client: `welcome {self,users,chat,placements,balance,dailyGoals,dailyBonusAwarded}` · `user_joined/left` · `user_moved` · `chat {entry}` · `state_sync {users}` · `item_placed/removed` · `currency_earned {amount,balance}` · `user_sat/stood` · `emote {userId,emote}` · `daily_goals_update {goals,rewardAwarded,balance}` · `error {code,message}`
+Server→client: `welcome {self,users,chat,placements,balance,dailyGoals,dailyBonusAwarded}` · `user_joined/left` · `user_moved` · `chat {entry}` · `state_sync {users}` · `item_placed/removed` · `currency_earned {amount,balance}` · `user_sat/stood` · `emote {userId,emote}` · `daily_goals_update {goals,rewardAwarded,balance}` · `badge_earned {badgeId,name,icon}` · `error {code,message}`
+
+API HTTP (Next.js, non WS): `/api/friends` (GET lista, POST richiesta), `/api/friends/respond`, `/api/friends/remove`, `/api/profile` (badge posseduti), `/api/avatar` (PATCH colore).
 
 Definizioni e parsing difensivo in `packages/shared/src/protocol.ts`.

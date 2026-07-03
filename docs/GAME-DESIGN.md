@@ -342,10 +342,10 @@ Le fondamenta di questo repo coprono: stanza DO realtime, auth, Chicchi con log,
 
 Dettagli implementativi e compromessi in README, sezione "Sprint 1".
 
-**Sprint 2 — "Le persone" (social graph)**
-5. Amici con presenza (30) + "offrigli un caffè" (31).
-6. Profilo con badge (24) e primi badge (primi 100, prima serata, primo brindisi).
-7. Editor avatar (56) su `avatar_config` esistente.
+**Sprint 2 — "Le persone" (social graph) — ✅ implementato (parziale)**
+5. Amici con presenza (30) — richiesta/accetta/rimuovi per username, presenza calcolata lato client dalla lista utenti già ricevuta via WebSocket (nessuna nuova infrastruttura: c'è un'unica stanza, "online" == "connesso al DO"). **"Offrigli un caffè" (31) NON implementato**: è un trasferimento di valuta P2P, esplicitamente fuori scope insieme al resto del trading fino alla fase di audit dedicata (vedi handoff originale) — anche in forma di "regalo" unidirezionale tocca lo stesso codice sensibile e merita lo stesso scrutinio.
+6. Profilo con badge (24) e primi 3 badge: primi_100 (registrazione), prima_serata (primo tris del giorno completato), primo_brindisi (prima emote cheers). Assegnazione idempotente via `awardBadge` (INSERT OR IGNORE), mai valuta coinvolta.
+7. Editor avatar (56) — solo colore per ora (6 schemi già esistenti in `AVATAR_COLOR_SCHEMES`); `avatar_config` supporta anche body/hair/top/bottom ma servirebbero asset e logica di disegno che non esistono ancora nel motore procedurale.
 
 **Sprint 3 — "L'appuntamento" (eventi)**
 8. Palinsesto fisso + bacheca (7, 9) e primo format: karaoke semplificato (66) o quiz (67).

@@ -20,6 +20,7 @@ import {
   CURRENCY,
   LIMITS,
   TX_REASONS,
+  awardBadge,
   awardDailyBonus,
   bumpDailyGoal,
   creditCurrency,
@@ -492,7 +493,19 @@ export class RoomDO implements DurableObject {
     }
     state.lastEmoteAt = now;
     this.broadcast({ type: 'emote', userId: state.uid, emote });
+    if (emote === 'cheers') await this.awardBadgeAndNotify(ws, state.uid, 'primo_brindisi');
     await this.bumpGoalAndNotify(ws, state.uid, 'emote');
+  }
+
+  private async awardBadgeAndNotify(ws: WebSocket, userId: string, badgeId: string): Promise<void> {
+    try {
+      const badge = await awardBadge(this.env.DB, userId, badgeId);
+      if (badge) {
+        this.send(ws, { type: 'badge_earned', badgeId: badge.id, name: badge.name, icon: badge.icon });
+      }
+    } catch (e) {
+      console.error(`awardBadge(${badgeId}) fallito per ${userId}`, e);
+    }
   }
 
   /** Incrementa un contatore del tris del giorno e notifica SOLO il mittente. */
@@ -504,6 +517,7 @@ export class RoomDO implements DurableObject {
     try {
       const { state: goals, awarded, balance } = await bumpDailyGoal(this.env.DB, userId, kind);
       this.send(ws, { type: 'daily_goals_update', goals, rewardAwarded: awarded, balance });
+      if (awarded !== null) await this.awardBadgeAndNotify(ws, userId, 'prima_serata');
     } catch (e) {
       console.error(`bumpDailyGoal(${kind}) fallito per ${userId}`, e);
     }

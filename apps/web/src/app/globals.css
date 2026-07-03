@@ -527,3 +527,119 @@ input {
   padding: 24px 0;
   font-size: 14px;
 }
+
+/* profilo: colore avatar + badge */
+.profile-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--crema-scura);
+  margin: 18px 0 10px;
+}
+
+.profile-section-title:first-child {
+  margin-top: 0;
+}
+
+.color-picker {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 3px solid transparent;
+}
+
+.color-swatch.active {
+  border-color: var(--crema);
+}
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.badge-card {
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 14px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.badge-card.locked {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.badge-icon {
+  font-size: 28px;
+}
+
+.badge-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* amici */
+.friend-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.friend-add-row input {
+  flex: 1;
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--crema);
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #4a3722;
+  gap: 10px;
+}
+
+.friend-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.friend-row .shop-buy {
+  width: auto;
+  padding: 6px 12px;
+}
+
+.friend-pending {
+  color: var(--crema-scura);
+  font-size: 13px;
+}
+
+.friend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #6b5a45;
+  margin-right: 8px;
+}
+
+.friend-dot.online {
+  background: var(--salvia);
+}

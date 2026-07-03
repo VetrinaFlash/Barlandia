@@ -198,6 +198,14 @@ export interface DailyGoalsUpdateMessage {
   balance: number | null;
 }
 
+/** Un badge appena guadagnato (mai broadcast: solo a chi lo ha ottenuto). */
+export interface BadgeEarnedMessage {
+  type: 'badge_earned';
+  badgeId: string;
+  name: string;
+  icon: string;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code:
@@ -230,6 +238,7 @@ export type ServerMessage =
   | UserStoodMessage
   | EmoteBroadcastMessage
   | DailyGoalsUpdateMessage
+  | BadgeEarnedMessage
   | ErrorMessage;
 
 // ---------------------------------------------------------------------------

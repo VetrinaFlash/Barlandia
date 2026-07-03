@@ -4,3 +4,5 @@ export * from './protocol';
 export * from './token';
 export * from './password';
 export * from './currency';
+export * from './badges';
+export * from './friends';

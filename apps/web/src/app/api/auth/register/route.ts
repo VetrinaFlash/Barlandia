@@ -3,6 +3,7 @@ import {
   CURRENCY,
   LIMITS,
   TX_REASONS,
+  awardBadge,
   creditCurrency,
   hashPassword,
 } from '@barlandia/shared';
@@ -76,6 +77,13 @@ export async function POST(request: Request): Promise<Response> {
   // bonus di benvenuto: passa dall'unica funzione che tocca i saldi
   // (scrive anche la riga di log in currency_transactions)
   const balance = await creditCurrency(db, userId, CURRENCY.welcomeBonus, TX_REASONS.welcome);
+
+  // badge "uno dei primi": conteggio best-effort, non serve precisione
+  // assoluta sotto registrazioni concorrenti per un badge cosmetico
+  const count = await db.prepare(`SELECT COUNT(*) AS n FROM users`).first<{ n: number }>();
+  if ((count?.n ?? 0) <= 100) {
+    await awardBadge(db, userId, 'primi_100');
+  }
 
   const user = { id: userId, username, colorScheme };
   const cookie = await createSessionCookie(user);

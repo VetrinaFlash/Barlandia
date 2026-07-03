@@ -5,9 +5,11 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  awardBadge,
   bumpDailyGoal,
   creditCurrency,
   getBalance,
+  listUserBadges,
   purchaseItem,
   signToken,
   isLayoutBlocked,
@@ -410,5 +412,64 @@ describe('Sedersi su un arredo', () => {
 
     wsMarco.ws.close();
     wsNadia.ws.close();
+  });
+});
+
+describe('Badge', () => {
+  beforeAll(async () => {
+    await makeUser('u-paolo', 'paolo');
+    await makeUser('u-rita', 'rita');
+  });
+
+  it('awardBadge è idempotente (nessun doppio badge)', async () => {
+    const first = await awardBadge(env.DB, 'u-paolo', 'primi_100');
+    expect(first?.id).toBe('primi_100');
+    const second = await awardBadge(env.DB, 'u-paolo', 'primi_100');
+    expect(second).toBeNull();
+    const badges = await listUserBadges(env.DB, 'u-paolo');
+    expect(badges.map((b) => b.id)).toEqual(['primi_100']);
+  });
+
+  it('la prima emote cheers assegna primo_brindisi, non due volte', async () => {
+    const ws = await connect('u-paolo', 'paolo');
+    await nextMessage(ws, (m) => m.type === 'welcome');
+
+    const badgePromise = nextMessage(ws, (m) => m.type === 'badge_earned');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'cheers' }));
+    const badge = (await badgePromise) as Extract<ServerMessage, { type: 'badge_earned' }>;
+    expect(badge.badgeId).toBe('primo_brindisi');
+
+    await new Promise((r) => setTimeout(r, 1600)); // supera emoteMinIntervalMs
+    const emotePromise = nextMessage(ws, (m) => m.type === 'emote');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'cheers' }));
+    await emotePromise;
+
+    const badges = await listUserBadges(env.DB, 'u-paolo');
+    expect(badges.filter((b) => b.id === 'primo_brindisi')).toHaveLength(1);
+
+    ws.ws.close();
+  });
+
+  it('assegna prima_serata la prima volta che il tris del giorno viene completato', async () => {
+    // presenza già a soglia, come farebbe l'alarm periodico
+    await bumpDailyGoal(env.DB, 'u-rita', 'presence');
+    await bumpDailyGoal(env.DB, 'u-rita', 'presence');
+
+    const ws = await connect('u-rita', 'rita');
+    await nextMessage(ws, (m) => m.type === 'welcome');
+
+    for (let i = 0; i < 3; i++) {
+      const upd = nextMessage(ws, (m) => m.type === 'daily_goals_update');
+      ws.ws.send(JSON.stringify({ type: 'chat', text: `msg ${i}` }));
+      await upd;
+      await new Promise((r) => setTimeout(r, 550));
+    }
+
+    const badgePromise = nextMessage(ws, (m) => m.type === 'badge_earned');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'wave' })); // completa il tris
+    const badge = (await badgePromise) as Extract<ServerMessage, { type: 'badge_earned' }>;
+    expect(badge.badgeId).toBe('prima_serata');
+
+    ws.ws.close();
   });
 });
