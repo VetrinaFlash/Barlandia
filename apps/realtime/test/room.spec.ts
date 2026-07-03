@@ -5,10 +5,14 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  XP,
   awardBadge,
+  awardXp,
   bumpDailyGoal,
   creditCurrency,
   getBalance,
+  getXpState,
+  levelForXp,
   listUserBadges,
   purchaseItem,
   signToken,
@@ -469,6 +473,63 @@ describe('Badge', () => {
     ws.ws.send(JSON.stringify({ type: 'emote', emote: 'wave' })); // completa il tris
     const badge = (await badgePromise) as Extract<ServerMessage, { type: 'badge_earned' }>;
     expect(badge.badgeId).toBe('prima_serata');
+
+    ws.ws.close();
+  });
+});
+
+describe('Livelli "Habitué" (XP)', () => {
+  beforeAll(async () => {
+    await makeUser('u-sara', 'sara');
+    await makeUser('u-tommaso', 'tommaso');
+  });
+
+  it('levelForXp: soglie corrette e livello massimo senza prossimo traguardo', () => {
+    expect(levelForXp(0)).toMatchObject({ level: 1, title: 'Nuovo Avventore' });
+    expect(levelForXp(79)).toMatchObject({ level: 1 });
+    expect(levelForXp(80)).toMatchObject({ level: 2, title: 'Habitué' });
+    const max = levelForXp(999999);
+    expect(max.title).toBe('Leggenda di Barlandia');
+    expect(max.xpForNextLevel).toBe(0);
+  });
+
+  it('awardXp accredita, aggiorna il livello quando si supera una soglia e rispetta il cap giornaliero', async () => {
+    const first = await awardXp(env.DB, 'u-sara', 50);
+    expect(first).toMatchObject({ gained: 50, totalXp: 50 });
+    expect(first?.levelBefore.level).toBe(1);
+    expect(first?.levelAfter.level).toBe(1);
+
+    // 50 + 40 = 90 → supera la soglia (80) del livello 2
+    const levelUp = await awardXp(env.DB, 'u-sara', 40);
+    expect(levelUp?.totalXp).toBe(90);
+    expect(levelUp?.levelBefore.level).toBe(1);
+    expect(levelUp?.levelAfter.level).toBe(2);
+
+    // il cap giornaliero è 120: già guadagnati 90, ne restano 30 disponibili oggi
+    const capped = await awardXp(env.DB, 'u-sara', 100);
+    expect(capped?.gained).toBe(30);
+    expect(capped?.totalXp).toBe(120);
+
+    // cap saturo: nessun ulteriore accredito oggi
+    const blocked = await awardXp(env.DB, 'u-sara', 10);
+    expect(blocked).toBeNull();
+    expect(await getXpState(env.DB, 'u-sara')).toBe(120);
+  });
+
+  it('un utente nuovo parte con xp 0 nel welcome; un badge guadagnato accredita XP', async () => {
+    const ws = await connect('u-tommaso', 'tommaso');
+    const welcome = (await nextMessage(ws, (m) => m.type === 'welcome')) as Extract<
+      ServerMessage,
+      { type: 'welcome' }
+    >;
+    expect(welcome.xp).toBe(0);
+
+    const xpPromise = nextMessage(ws, (m) => m.type === 'xp_earned');
+    ws.ws.send(JSON.stringify({ type: 'emote', emote: 'cheers' })); // assegna primo_brindisi
+    const xp = (await xpPromise) as Extract<ServerMessage, { type: 'xp_earned' }>;
+    expect(xp.amount).toBe(XP.badgeEarned);
+    expect(xp.totalXp).toBe(XP.badgeEarned);
+    expect(xp.leveledUp).toBe(false);
 
     ws.ws.close();
   });

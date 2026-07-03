@@ -7,3 +7,4 @@ export * from './currency';
 export * from './badges';
 export * from './friends';
 export * from './eventi';
+export * from './levels';

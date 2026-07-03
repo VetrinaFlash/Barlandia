@@ -2,7 +2,13 @@
 
 /** Bottom-sheet mobile-first: chat, shop, inventario, profilo, amici, bacheca, cartolina. */
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { AVATAR_COLOR_SCHEMES, type ChatEntry, type DailyGoalsSnapshot, type EventoGiorno } from '@barlandia/shared';
+import {
+  AVATAR_COLOR_SCHEMES,
+  levelForXp,
+  type ChatEntry,
+  type DailyGoalsSnapshot,
+  type EventoGiorno,
+} from '@barlandia/shared';
 import { AVATAR_COLORS } from '@/game/palette';
 
 function hex(n: number): string {
@@ -277,16 +283,19 @@ export interface Badge {
 export function ProfileSheet({
   username,
   colorScheme,
+  xp,
   onColorChange,
   onClose,
 }: {
   username: string;
   colorScheme: string;
+  xp: number;
   onColorChange: (scheme: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [badges, setBadges] = useState<Badge[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const level = levelForXp(xp);
 
   useEffect(() => {
     fetch('/api/profile')
@@ -297,6 +306,29 @@ export function ProfileSheet({
 
   return (
     <Sheet title={`Profilo di ${username}`} onClose={onClose}>
+      <div className="profile-section-title">Livello</div>
+      <div className="level-block">
+        <div className="level-badge">🏅 Lv.{level.level}</div>
+        <div className="level-detail">
+          <div className="level-title">{level.title}</div>
+          {level.xpForNextLevel > 0 ? (
+            <>
+              <div className="level-bar">
+                <div
+                  className="level-bar-fill"
+                  style={{ width: `${Math.min(100, (level.xpIntoLevel / level.xpForNextLevel) * 100)}%` }}
+                />
+              </div>
+              <div className="level-xp-label">
+                {level.xpIntoLevel} / {level.xpForNextLevel} XP al prossimo livello
+              </div>
+            </>
+          ) : (
+            <div className="level-xp-label">Livello massimo raggiunto ✨</div>
+          )}
+        </div>
+      </div>
+
       <div className="profile-section-title">Colore avatar</div>
       <div className="color-picker">
         {AVATAR_COLOR_SCHEMES.map((scheme) => (

@@ -125,7 +125,7 @@ export async function getBalance(db: D1Database, userId: string): Promise<number
 // Sprint 1 (game design roadmap): bonus giornaliero + tris del giorno.
 // Vedi docs/GAME-DESIGN.md.
 
-function todayUTC(): string {
+export function todayUTC(): string {
   return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 }
 

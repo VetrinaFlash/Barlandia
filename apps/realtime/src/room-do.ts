@@ -20,12 +20,15 @@ import {
   CURRENCY,
   LIMITS,
   TX_REASONS,
+  XP,
   awardBadge,
   awardDailyBonus,
+  awardXp,
   bumpDailyGoal,
   creditCurrency,
   getBalance,
   getDailyGoalsState,
+  getXpState,
   isInBounds,
   isWalkable,
   tileKey,
@@ -139,6 +142,7 @@ export class RoomDO implements DurableObject {
       balance = await getBalance(this.env.DB, uid);
     }
     const dailyGoals = await getDailyGoalsState(this.env.DB, uid);
+    const xp = await getXpState(this.env.DB, uid);
 
     this.send(server, {
       type: 'welcome',
@@ -149,6 +153,7 @@ export class RoomDO implements DurableObject {
       balance,
       dailyGoals,
       dailyBonusAwarded,
+      xp,
     });
     this.broadcast({ type: 'user_joined', user: this.toRoomUser(state) }, server);
 
@@ -326,6 +331,7 @@ export class RoomDO implements DurableObject {
           TX_REASONS.passive,
         );
         this.send(ws, { type: 'currency_earned', amount: CURRENCY.earnAmount, balance });
+        await this.awardXpAndNotify(ws, state.uid, XP.presenceTick);
         await this.bumpGoalAndNotify(ws, state.uid, 'presence');
       } catch (e) {
         console.error(`accredito passivo fallito per ${state.uid}`, e);
@@ -502,6 +508,7 @@ export class RoomDO implements DurableObject {
       const badge = await awardBadge(this.env.DB, userId, badgeId);
       if (badge) {
         this.send(ws, { type: 'badge_earned', badgeId: badge.id, name: badge.name, icon: badge.icon });
+        await this.awardXpAndNotify(ws, userId, XP.badgeEarned);
       }
     } catch (e) {
       console.error(`awardBadge(${badgeId}) fallito per ${userId}`, e);
@@ -517,9 +524,28 @@ export class RoomDO implements DurableObject {
     try {
       const { state: goals, awarded, balance } = await bumpDailyGoal(this.env.DB, userId, kind);
       this.send(ws, { type: 'daily_goals_update', goals, rewardAwarded: awarded, balance });
-      if (awarded !== null) await this.awardBadgeAndNotify(ws, userId, 'prima_serata');
+      if (awarded !== null) {
+        await this.awardBadgeAndNotify(ws, userId, 'prima_serata');
+        await this.awardXpAndNotify(ws, userId, XP.trisComplete);
+      }
     } catch (e) {
       console.error(`bumpDailyGoal(${kind}) fallito per ${userId}`, e);
+    }
+  }
+
+  /** Accredita XP (cap giornaliero incluso) e notifica SOLO il mittente. */
+  private async awardXpAndNotify(ws: WebSocket, userId: string, amount: number): Promise<void> {
+    try {
+      const result = await awardXp(this.env.DB, userId, amount);
+      if (!result) return; // cap giornaliero raggiunto: nessuna notifica
+      this.send(ws, {
+        type: 'xp_earned',
+        amount: result.gained,
+        totalXp: result.totalXp,
+        leveledUp: result.levelAfter.level > result.levelBefore.level,
+      });
+    } catch (e) {
+      console.error(`awardXp fallito per ${userId}`, e);
     }
   }
 

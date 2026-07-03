@@ -6,7 +6,14 @@
  */
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EMOTES, type ChatEntry, type DailyGoalsSnapshot, type EmoteType, type ServerMessage } from '@barlandia/shared';
+import {
+  EMOTES,
+  levelForXp,
+  type ChatEntry,
+  type DailyGoalsSnapshot,
+  type EmoteType,
+  type ServerMessage,
+} from '@barlandia/shared';
 import type { BarEngine } from '@/game/engine';
 import type { RoomConnection } from '@/game/net';
 import { isMuted, setMuted, sound } from '@/game/sound';
@@ -58,6 +65,7 @@ export default function BarPage() {
   const [seated, setSeated] = useState(false);
   const [dailyGoals, setDailyGoals] = useState<DailyGoalsSnapshot | null>(null);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [xp, setXp] = useState(0);
   const [muted, setMutedState] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -150,6 +158,7 @@ export default function BarPage() {
               setBalance(msg.balance);
               setSeated(!!msg.self.seatedOn);
               setDailyGoals(msg.dailyGoals);
+              setXp(msg.xp);
               setOnlineIds(new Set(msg.users.map((u) => u.id).concat(msg.self.id)));
               if (msg.dailyBonusAwarded !== null) {
                 showToast(`Il caffè di oggi è offerto dalla casa: +${msg.dailyBonusAwarded} Chicchi ☕`);
@@ -222,6 +231,14 @@ export default function BarPage() {
             case 'badge_earned':
               showToast(`Nuovo badge: ${msg.icon} ${msg.name}!`);
               sound.badgeEarned();
+              break;
+            case 'xp_earned':
+              setXp(msg.totalXp);
+              if (msg.leveledUp) {
+                const { level, title } = levelForXp(msg.totalXp);
+                showToast(`Sei salito al livello ${level}: ${title}! 🏅`);
+                sound.levelUp();
+              }
               break;
             case 'error':
               showToast(msg.message);
@@ -322,6 +339,9 @@ export default function BarPage() {
           <div className="hud-pill hud-balance">
             <span className="chicco">☕</span>
             <span>{balance ?? '–'}</span>
+          </div>
+          <div className="hud-pill" title={`${levelForXp(xp).title} — ${levelForXp(xp).xpIntoLevel} XP`}>
+            🏅 Lv.{levelForXp(xp).level}
           </div>
           <button
             className="hud-btn hud-btn-icon"
@@ -424,6 +444,7 @@ export default function BarPage() {
         <ProfileSheet
           username={username}
           colorScheme={colorScheme}
+          xp={xp}
           onColorChange={onColorChange}
           onClose={() => setSheet(null)}
         />

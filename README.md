@@ -75,6 +75,15 @@ Terza incrementale, **la più incompleta delle tre**: due dei tre item della roa
 - **Non implementato: un format giocabile per la bacheca** (karaoke/quiz). È un minigioco vero e proprio — esplicitamente fuori scope nell'handoff originale di Fase 1, la stessa linea che ha già escluso il trading. La bacheca oggi è solo informativa.
 - **Non implementato: la notifica intelligente** ("i tuoi amici sono al bar"). Richiede un'infrastruttura Web Push (VAPID, service worker con push handler, storage delle subscription) che non esiste, con differenze di supporto reali tra iOS/Android/desktop da testare con cura — merita un giro dedicato invece di un'implementazione affrettata.
 
+## Sprint 4 (game design) — livelli "Habitué"
+
+Quarta incrementale (voce 23 di `docs/GAME-DESIGN.md`): un sistema di progressione che racconta "quanto sei stato al bar", non quanto hai speso.
+
+- **XP solo da presenza ed eventi, mai dalla spesa** (`packages/shared/src/levels.ts`): stesso tick di presenza attiva che accredita i Chicchi (+4 XP), completamento del tris del giorno (+20 XP), ogni badge guadagnato (+15 XP). Comprare arredi non dà mai XP: un livello alto certifica presenza reale, non portafoglio.
+- **Cap giornaliero** (`daily_xp_gains`, 120 XP/giorno): senza un tetto, chi resta collegato H24 supererebbe chi si presenta ogni sera per un'oretta — l'opposto di quello che un livello "Habitué" dovrebbe premiare.
+- **7 livelli con titolo a tema bar** (Nuovo Avventore → Leggenda di Barlandia), soglie cumulative in `levelForXp`. Pillola 🏅 in HUD, dettaglio con barra di progresso nel profilo.
+- **Compromesso dichiarato**: `awardXp` fa un breve *read-then-write* (legge il residuo di oggi e lo XP corrente, poi scrive in batch) invece di un singolo UPDATE atomico come `creditCurrency` — qui non c'è valuta in gioco, quindi una corsa tra due tick ravvicinati farebbe guadagnare al più qualche XP di troppo in un sistema puramente cosmetico. Stesso livello di tolleranza già accettato per il badge `primi_100`.
+
 ## Rifinitura post-lancio — bug reale, grafica, suoni
 
 Dopo il primo deploy in produzione: segnalato un bug concreto ("compro un arredo e non è quello che ottengo piazzato") più un giudizio generale su grafica/audio scarni.

@@ -556,6 +556,52 @@ input {
   margin-top: 0;
 }
 
+.level-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.level-badge {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.level-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.level-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.level-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.level-bar-fill {
+  height: 100%;
+  background: var(--ottone);
+  border-radius: 999px;
+}
+
+.level-xp-label {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
 .color-picker {
   display: flex;
   gap: 10px;

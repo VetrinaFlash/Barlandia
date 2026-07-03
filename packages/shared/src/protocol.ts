@@ -121,6 +121,8 @@ export interface WelcomeMessage {
   dailyGoals: DailyGoalsSnapshot;
   /** Importo del bonus giornaliero appena accreditato, se è il primo ingresso di oggi. */
   dailyBonusAwarded: number | null;
+  /** XP totale del livello "Habitué" (voce 23 di GAME-DESIGN.md); il client deriva livello/titolo con levelForXp. */
+  xp: number;
 }
 
 export interface StateSyncMessage {
@@ -206,6 +208,14 @@ export interface BadgeEarnedMessage {
   icon: string;
 }
 
+/** XP guadagnata (mai broadcast: solo a chi l'ha ottenuta). */
+export interface XpEarnedMessage {
+  type: 'xp_earned';
+  amount: number;
+  totalXp: number;
+  leveledUp: boolean;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code:
@@ -239,6 +249,7 @@ export type ServerMessage =
   | EmoteBroadcastMessage
   | DailyGoalsUpdateMessage
   | BadgeEarnedMessage
+  | XpEarnedMessage
   | ErrorMessage;
 
 // ---------------------------------------------------------------------------

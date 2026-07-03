@@ -89,6 +89,13 @@ export const sound = {
     ]),
   emote: () => tone(440, 0.1, { type: 'triangle', gain: 0.12 }),
   sit: () => tone(180, 0.12, { type: 'sine', gain: 0.1 }),
+  levelUp: () =>
+    sequence([
+      { freq: 392, delay: 0, gain: 0.14 },
+      { freq: 523, delay: 0.1, gain: 0.14 },
+      { freq: 659, delay: 0.2, gain: 0.14 },
+      { freq: 784, delay: 0.3, gain: 0.16, duration: 0.35 },
+    ]),
   errorBeep: () =>
     sequence([
       { freq: 220, delay: 0, type: 'square', gain: 0.06 },

@@ -352,6 +352,9 @@ Dettagli implementativi e compromessi in README, sezione "Sprint 1".
 9. **Notifica intelligente (84) NON implementata**: richiede un'infrastruttura Web Push (VAPID keys, service worker con push handler, storage delle subscription, gestione dei permessi) che non esiste ancora e merita un giro dedicato — specialmente per le differenze di supporto tra iOS/Android/desktop, che vanno testate con cura e non improvvisate.
 10. Cartolina della serata (87) — riepilogo di oggi (minuti di presenza stimati, tris del giorno, saldo, badge guadagnati oggi, evento della serata) in una card in stile "cartolina". Nessuna esportazione automatica in immagine: l'utente fa uno screenshot per condividerla — scelta deliberata per evitare di introdurre una libreria di rendering canvas-to-image solo per questo.
 
+**Sprint 4 — "L'abitudine" (progressione) — ✅ implementato**
+11. Livello "Habitué" (23) — XP solo da presenza attiva ed eventi (tick di presenza, tris del giorno completato, badge guadagnati), MAI dalla spesa; cap giornaliero per non premiare chi resta collegato H24. 7 livelli con titolo a tema bar, pillola in HUD, dettaglio con barra di progresso nel profilo. Dettagli e compromesso dichiarato in README, sezione "Sprint 4".
+
 **Poi**: seconda area del locale (1), Compagnie (35), stagione 1 con catalogo a rotazione (40) — e SOLO dopo l'audit valuta: Gettoni (18), trading con escrow (38), aste (39).
 
 > Nota: il calendario completo dei 365 eventi è in `docs/EVENTI-365.md` (generato da `scripts/genera-eventi.mjs`, modificabile e rigenerabile).
