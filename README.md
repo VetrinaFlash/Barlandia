@@ -92,6 +92,14 @@ Dopo il primo deploy in produzione: segnalato un bug concreto ("compro un arredo
 - **Grafica**: contorni sottili su tutte le forme dell'avatar (leggibilità migliore su sfondo chiaro), due mensole bottiglie e un quadro a parete come arredo fisso della stanza (`drawBottleShelf`/`drawWallFrame` in `sprites.ts`) per rompere la sensazione di stanza vuota.
 - **Suoni**: effetti sintetizzati via Web Audio (`apps/web/src/game/sound.ts`) — nessun asset esterno scaricato (stesso vincolo di sandbox già documentato per la grafica). Toni brevi generati con oscillatori + inviluppo per chat inviata/ricevuta, Chicchi guadagnati, acquisto, badge, emote, sedersi, errore. L'`AudioContext` si crea solo al primo gesto dell'utente (policy autoplay dei browser). Toggle 🔊/🔇 in HUD, stato persistito in `localStorage`.
 
+## Rifinitura #2 — bug reale sul tris del giorno, obiettivi, illuminazione
+
+Secondo giro di segnalazioni ("gli obiettivi non funzionano"). Investigato prima di modificare codice: il backend era corretto (`chat_count` in D1 arrivava correttamente a 3 dopo 3 messaggi, verificato in locale via query dirette), ma la UI aveva due problemi reali:
+
+- **Bug: la pillola "🎯 n/3" era un `<div>` statico**, non un pulsante — su mobile il tap non apriva nulla (il dettaglio esisteva solo come `title`, un tooltip che il touch non mostra mai). Corretto rendendola un `<button>` che apre una nuova sheet.
+- **Bug di percezione: la frazione mostrava solo obiettivi COMPLETI**, non il progresso di ciascuno — chi mandava 1-2 messaggi (su un target di 3) vedeva "0/3" fisso e concludeva, ragionevolmente, che il contatore fosse rotto. Corretto con la nuova `GoalsSheet` (`apps/web/src/app/bar/sheets.tsx`): una barra di progresso per ciascuno dei 3 obiettivi (chat/presenza/emote), aggiornata in tempo reale perché legge lo stesso stato `dailyGoals` già ricevuto via WebSocket in `page.tsx` (nessuna nuova fetch).
+- **Grafica**: lampada a sospensione centrale con alone caldo sul pavimento sottostante (`drawPendantLamp`/`drawFloorGlow` in `sprites.ts`) — l'alone è approssimato con cerchi concentrici a opacità decrescente invece di un gradiente radiale nativo, più semplice e sufficiente per l'effetto cercato.
+
 ## Setup locale
 
 Prerequisiti: Node 22+, npm 10+.

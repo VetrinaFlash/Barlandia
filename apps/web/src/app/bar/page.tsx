@@ -22,6 +22,7 @@ import {
   CartolinaSheet,
   ChatSheet,
   FriendsSheet,
+  GoalsSheet,
   InventorySheet,
   ProfileSheet,
   ShopSheet,
@@ -29,7 +30,16 @@ import {
   type ShopItem,
 } from './sheets';
 
-type OpenSheet = null | 'chat' | 'shop' | 'inventory' | 'profile' | 'friends' | 'bacheca' | 'cartolina';
+type OpenSheet =
+  | null
+  | 'chat'
+  | 'shop'
+  | 'inventory'
+  | 'profile'
+  | 'friends'
+  | 'bacheca'
+  | 'cartolina'
+  | 'goals';
 
 interface PlacementMode {
   inventoryId: string;
@@ -370,10 +380,7 @@ export default function BarPage() {
             Cartolina
           </button>
           {dailyGoals && (
-            <div
-              className="hud-pill"
-              title={`Tris del giorno — chat: ${dailyGoals.chatCount}/${dailyGoals.chatTarget}, presenza: ${dailyGoals.presenceTicks}/${dailyGoals.presenceTarget}, emote: ${dailyGoals.emoteCount}/${dailyGoals.emoteTarget}`}
-            >
+            <button className="hud-pill" onClick={() => setSheet('goals')}>
               🎯{' '}
               {[
                 dailyGoals.chatCount >= dailyGoals.chatTarget,
@@ -381,7 +388,7 @@ export default function BarPage() {
                 dailyGoals.emoteCount >= dailyGoals.emoteTarget,
               ].filter(Boolean).length}
               /3
-            </div>
+            </button>
           )}
         </div>
       </div>
@@ -451,6 +458,9 @@ export default function BarPage() {
       )}
       {sheet === 'friends' && (
         <FriendsSheet onlineIds={onlineIds} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'goals' && (
+        <GoalsSheet dailyGoals={dailyGoals} onClose={() => setSheet(null)} />
       )}
       {sheet === 'bacheca' && <BachecaSheet onClose={() => setSheet(null)} />}
       {sheet === 'cartolina' && (

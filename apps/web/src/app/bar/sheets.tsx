@@ -4,6 +4,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   AVATAR_COLOR_SCHEMES,
+  CURRENCY,
   levelForXp,
   type ChatEntry,
   type DailyGoalsSnapshot,
@@ -500,6 +501,68 @@ export function FriendsSheet({
 }
 
 // ---------------------------------------------------------------------------
+
+const GOAL_ROWS: { key: 'chatCount' | 'presenceTicks' | 'emoteCount'; targetKey: 'chatTarget' | 'presenceTarget' | 'emoteTarget'; icon: string; label: string }[] = [
+  { key: 'chatCount', targetKey: 'chatTarget', icon: '💬', label: 'Manda messaggi in chat' },
+  { key: 'presenceTicks', targetKey: 'presenceTarget', icon: '☕', label: 'Resta al bar' },
+  { key: 'emoteCount', targetKey: 'emoteTarget', icon: '👋', label: 'Fai un’emote' },
+];
+
+/**
+ * Sheet degli obiettivi ("tris del giorno"): mostra il progresso di
+ * OGNI obiettivo con una barra, non solo quanti sono completi — prima
+ * la HUD mostrava un'unica frazione "n/3" che restava a 0/3 finché il
+ * primo obiettivo non era del tutto completo, dando l'impressione che
+ * non stesse succedendo nulla (bug segnalato: "gli obiettivi non
+ * funzionano"). `dailyGoals` arriva da page.tsx già live via WebSocket,
+ * quindi le barre si muovono in tempo reale anche a sheet aperta.
+ */
+export function GoalsSheet({
+  dailyGoals,
+  onClose,
+}: {
+  dailyGoals: DailyGoalsSnapshot | null;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet title="Obiettivi di oggi" onClose={onClose}>
+      {dailyGoals === null && <div className="inv-empty">Carico…</div>}
+      {dailyGoals && (
+        <>
+          <div className="goal-list">
+            {GOAL_ROWS.map((row) => {
+              const value = dailyGoals[row.key];
+              const target = dailyGoals[row.targetKey];
+              const done = value >= target;
+              return (
+                <div className="goal-row" key={row.key}>
+                  <div className="goal-row-top">
+                    <span className="goal-icon">{row.icon}</span>
+                    <span className="goal-label">{row.label}</span>
+                    <span className="goal-count">
+                      {done ? '✓' : `${value}/${target}`}
+                    </span>
+                  </div>
+                  <div className="level-bar">
+                    <div
+                      className="level-bar-fill"
+                      style={{ width: `${Math.min(100, (value / target) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="goal-reward">
+            {dailyGoals.rewardClaimed
+              ? `Premio già riscosso oggi ✅ (+${CURRENCY.dailyGoalsReward} ${CURRENCY.name})`
+              : `Completa tutti e tre gli obiettivi per +${CURRENCY.dailyGoalsReward} ${CURRENCY.name} 🎉`}
+          </div>
+        </>
+      )}
+    </Sheet>
+  );
+}
 
 export function BachecaSheet({ onClose }: { onClose: () => void }) {
   const [oggi, setOggi] = useState<EventoGiorno | null>(null);

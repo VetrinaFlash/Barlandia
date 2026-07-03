@@ -21,7 +21,14 @@ import {
 import { Avatar, type Direction } from './avatar';
 import { TILE_H, TILE_W, depthOf, tileToWorld, worldToTile } from './iso';
 import { PALETTE as P } from './palette';
-import { drawBottleShelf, drawEspressoMachine, drawFurniture, drawWallFrame } from './sprites';
+import {
+  drawBottleShelf,
+  drawEspressoMachine,
+  drawFloorGlow,
+  drawFurniture,
+  drawPendantLamp,
+  drawWallFrame,
+} from './sprites';
 
 interface UserSprite {
   avatar: Avatar;
@@ -328,6 +335,21 @@ export class BarEngine {
       drawWallFrame(g);
       g.position.set(wx - 16, wy - 58);
       room.addChild(g);
+    }
+
+    // lampada a sospensione centrale + alone caldo sul pavimento sottostante
+    // (rompe la piattezza della sola luce ambientale uniforme)
+    {
+      const { x: wx, y: wy } = tileToWorld(6, 5);
+      const glow = new Graphics();
+      drawFloorGlow(glow);
+      glow.position.set(wx, wy);
+      room.addChild(glow);
+
+      const lamp = new Graphics();
+      drawPendantLamp(lamp);
+      lamp.position.set(wx, wy - 40);
+      room.addChild(lamp);
     }
 
     return room;

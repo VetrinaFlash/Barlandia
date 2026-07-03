@@ -704,6 +704,45 @@ input {
   background: var(--salvia);
 }
 
+/* obiettivi del giorno */
+.goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.goal-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.goal-icon {
+  font-size: 16px;
+}
+
+.goal-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.goal-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.goal-reward {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: var(--espresso-scuro);
+  border: 1px solid #55402c;
+  border-radius: 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
 /* bacheca: evento del giorno */
 .event-card {
   background: var(--espresso-scuro);

@@ -206,6 +206,32 @@ export function drawWallFrame(g: Graphics): void {
   }
 }
 
+/** Lampada a sospensione centrale: cavo + paralume conico + lampadina accesa. */
+export function drawPendantLamp(g: Graphics): void {
+  g.rect(-1, -70, 2, 40).fill(P.espresso);
+  g.poly([-14, -30, 14, -30, 9, -18, -9, -18]).fill(P.woodDark);
+  g.poly([-14, -30, 14, -30, 9, -18, -9, -18]).stroke({ width: 1, color: P.brass, alpha: 0.7 });
+  g.ellipse(0, -19, 6, 3).fill({ color: 0xffe6a8, alpha: 0.95 });
+}
+
+/**
+ * Alone caldo sul pavimento sotto una lampada: cerchi concentrici a bassa
+ * opacità (PixiJS Graphics non ha un gradiente radiale comodo per un
+ * caso così semplice) — rompe la piattezza dell'illuminazione uniforme
+ * della stanza.
+ */
+export function drawFloorGlow(g: Graphics): void {
+  const rings: [number, number][] = [
+    [70, 0.05],
+    [52, 0.07],
+    [36, 0.09],
+    [20, 0.12],
+  ];
+  for (const [r, alpha] of rings) {
+    g.ellipse(0, 0, r, r * 0.55).fill({ color: 0xffdd99, alpha });
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 const DRAWERS: Record<string, (g: Graphics) => void> = {
