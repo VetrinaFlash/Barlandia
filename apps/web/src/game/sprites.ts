@@ -164,7 +164,8 @@ function freccette(g: Graphics): void {
 }
 
 // ---------------------------------------------------------------------------
-// Decori fissi (non acquistabili): macchina espresso sul bancone
+// Decori fissi (non acquistabili): macchina espresso, mensola bottiglie,
+// quadro a parete — rompono il vuoto della stanza senza dipendere dallo shop.
 
 export function drawEspressoMachine(g: Graphics): void {
   // corpo in metallo
@@ -178,6 +179,31 @@ export function drawEspressoMachine(g: Graphics): void {
   // tazzine sopra
   g.ellipse(-6, -32, 3, 1.8).fill(P.crema);
   g.ellipse(4, -32, 3, 1.8).fill(P.crema);
+}
+
+const BOTTLE_COLORS = [P.terracotta, P.teal, P.salvia, P.vinaccia, P.brass, P.terracottaViva];
+
+/** Mensola con bottiglie, appesa al muro sopra il bancone. */
+export function drawBottleShelf(g: Graphics, seed: number): void {
+  g.rect(-27, -3, 54, 5).fill(P.woodDark);
+  g.rect(-27, -3, 54, 5).stroke({ width: 1, color: P.brass, alpha: 0.6 });
+  const xs = [-19, -11, -3, 5, 13, 21];
+  xs.forEach((bx, i) => {
+    const c = BOTTLE_COLORS[(i + seed) % BOTTLE_COLORS.length]!;
+    const h = 13 + ((i + seed) % 3) * 2;
+    g.roundRect(bx - 2.2, -3 - h, 4.4, h, 1.5).fill({ color: c, alpha: 0.9 });
+    g.rect(bx - 1, -5 - h, 2, 4).fill({ color: c, alpha: 0.9 });
+  });
+}
+
+/** Quadro/menu a parete: cornice ottone + "lavagna" con voci scritte a mano. */
+export function drawWallFrame(g: Graphics): void {
+  g.roundRect(-24, -46, 48, 36, 3).fill(P.espresso);
+  g.roundRect(-24, -46, 48, 36, 3).stroke({ width: 2, color: P.brass });
+  g.roundRect(-20, -42, 40, 28, 2).fill(0x2a1e14);
+  for (const [i, w] of [26, 32, 20].entries()) {
+    g.rect(-16, -36 + i * 8, w, 2.5).fill({ color: P.crema, alpha: 0.55 });
+  }
 }
 
 // ---------------------------------------------------------------------------

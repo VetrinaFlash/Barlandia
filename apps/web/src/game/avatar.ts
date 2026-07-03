@@ -148,29 +148,31 @@ export class Avatar {
     g.clear();
     g.scale.x = flip;
 
+    const OUTLINE = { width: 1.4, color: 0x1c1108, alpha: 0.45 };
+
     // ombra
     g.ellipse(0, 0, 12, 6).fill({ color: P.shadow, alpha: 0.25 });
 
     // gambe
-    g.roundRect(-7, -14, 6, 14, 3).fill(P.espresso);
-    g.roundRect(1, -14, 6, 14, 3).fill(P.espresso);
+    g.roundRect(-7, -14, 6, 14, 3).fill(P.espresso).stroke(OUTLINE);
+    g.roundRect(1, -14, 6, 14, 3).fill(P.espresso).stroke(OUTLINE);
 
     // corpo (capsula)
-    g.roundRect(-10, -34, 20, 22, 9).fill(body);
+    g.roundRect(-10, -34, 20, 22, 9).fill(body).stroke(OUTLINE);
     // grembiule da avventore? no: dettaglio maglia
     if (!back) {
       g.roundRect(-10, -22, 20, 4, 2).fill(accent);
     }
     // braccia
     if (side) {
-      g.roundRect(2, -32, 6, 16, 3).fill(accent);
+      g.roundRect(2, -32, 6, 16, 3).fill(accent).stroke(OUTLINE);
     } else {
-      g.roundRect(-13, -32, 5, 16, 3).fill(accent);
-      g.roundRect(8, -32, 5, 16, 3).fill(accent);
+      g.roundRect(-13, -32, 5, 16, 3).fill(accent).stroke(OUTLINE);
+      g.roundRect(8, -32, 5, 16, 3).fill(accent).stroke(OUTLINE);
     }
 
     // testa
-    g.circle(0, -42, 9).fill(this.skin);
+    g.circle(0, -42, 9).fill(this.skin).stroke(OUTLINE);
     // capelli
     if (back) {
       g.moveTo(-9, -44).arc(0, -42, 9, Math.PI, 0).fill(P.espresso);

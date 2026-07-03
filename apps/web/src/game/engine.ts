@@ -21,7 +21,7 @@ import {
 import { Avatar, type Direction } from './avatar';
 import { TILE_H, TILE_W, depthOf, tileToWorld, worldToTile } from './iso';
 import { PALETTE as P } from './palette';
-import { drawEspressoMachine, drawFurniture } from './sprites';
+import { drawBottleShelf, drawEspressoMachine, drawFurniture, drawWallFrame } from './sprites';
 
 interface UserSprite {
   avatar: Avatar;
@@ -309,6 +309,25 @@ export class BarEngine {
           room.addChild(m);
         }
       }
+    }
+
+    // mensola con bottiglie appesa al muro sopra il bancone (decoro
+    // fisso, sempre presente — rompe il vuoto anche a locale spoglio)
+    for (const sx of [3, 6]) {
+      const { x: wx, y: wy } = tileToWorld(sx, 0);
+      const g = new Graphics();
+      drawBottleShelf(g, sx);
+      g.position.set(wx, wy - 74);
+      room.addChild(g);
+    }
+
+    // quadro/lavagna sul muro opposto
+    {
+      const { x: wx, y: wy } = tileToWorld(0, 4);
+      const g = new Graphics();
+      drawWallFrame(g);
+      g.position.set(wx - 16, wy - 58);
+      room.addChild(g);
     }
 
     return room;

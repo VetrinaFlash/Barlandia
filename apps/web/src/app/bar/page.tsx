@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMOTES, type ChatEntry, type DailyGoalsSnapshot, type EmoteType, type ServerMessage } from '@barlandia/shared';
 import type { BarEngine } from '@/game/engine';
 import type { RoomConnection } from '@/game/net';
+import { isMuted, setMuted, sound } from '@/game/sound';
 import {
   BachecaSheet,
   CartolinaSheet,
@@ -57,7 +58,18 @@ export default function BarPage() {
   const [seated, setSeated] = useState(false);
   const [dailyGoals, setDailyGoals] = useState<DailyGoalsSnapshot | null>(null);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [muted, setMutedState] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setMutedState(isMuted());
+  }, []);
+
+  function toggleMuted() {
+    const next = !muted;
+    setMuted(next);
+    setMutedState(next);
+  }
 
   const setSheet = useCallback((s: OpenSheet) => {
     sheetRef.current = s;
@@ -166,6 +178,7 @@ export default function BarPage() {
               eng.showBubble(msg.entry.userId, msg.entry.text);
               setMessages((prev) => [...prev.slice(-99), msg.entry]);
               if (sheetRef.current !== 'chat') setUnread((n) => n + 1);
+              if (msg.entry.userId !== selfIdRef.current) sound.chatReceived();
               break;
             case 'item_placed':
               eng.addPlacement(msg.placement);
@@ -181,10 +194,14 @@ export default function BarPage() {
             case 'currency_earned':
               setBalance(msg.balance);
               showToast(`+${msg.amount} Chicco per la tua presenza ☕`);
+              sound.coinEarned();
               break;
             case 'user_sat':
               eng.setUserSeated(msg.userId, true, { x: msg.x, y: msg.y });
-              if (msg.userId === selfIdRef.current) setSeated(true);
+              if (msg.userId === selfIdRef.current) {
+                setSeated(true);
+                sound.sit();
+              }
               break;
             case 'user_stood':
               eng.setUserSeated(msg.userId, false);
@@ -192,19 +209,23 @@ export default function BarPage() {
               break;
             case 'emote':
               eng.showEmote(msg.userId, EMOTE_EMOJI[msg.emote]);
+              if (msg.userId !== selfIdRef.current) sound.emote();
               break;
             case 'daily_goals_update':
               setDailyGoals(msg.goals);
               if (msg.rewardAwarded !== null) {
                 if (msg.balance !== null) setBalance(msg.balance);
                 showToast(`Tris del giorno completato: +${msg.rewardAwarded} Chicchi 🎉`);
+                sound.coinEarned();
               }
               break;
             case 'badge_earned':
               showToast(`Nuovo badge: ${msg.icon} ${msg.name}!`);
+              sound.badgeEarned();
               break;
             case 'error':
               showToast(msg.message);
+              sound.errorBeep();
               break;
           }
         },
@@ -232,11 +253,13 @@ export default function BarPage() {
     const data = (await res.json()) as { balance?: number; message?: string };
     if (!res.ok) {
       showToast(data.message ?? 'Acquisto non riuscito');
+      sound.errorBeep();
       return;
     }
     setBalance(data.balance ?? null);
     setInvRefresh((n) => n + 1);
     showToast(`${item.name} acquistato!`);
+    sound.purchase();
   }
 
   function onPlaceRequest(item: InventoryItem) {
@@ -251,10 +274,12 @@ export default function BarPage() {
 
   function sendChat(text: string) {
     connRef.current?.send({ type: 'chat', text });
+    sound.chatSent();
   }
 
   function sendEmote(emote: EmoteType) {
     connRef.current?.send({ type: 'emote', emote });
+    sound.emote();
   }
 
   function standUp() {
@@ -298,6 +323,14 @@ export default function BarPage() {
             <span className="chicco">☕</span>
             <span>{balance ?? '–'}</span>
           </div>
+          <button
+            className="hud-btn hud-btn-icon"
+            onClick={toggleMuted}
+            title={muted ? 'Riattiva audio' : 'Disattiva audio'}
+            aria-label={muted ? 'Riattiva audio' : 'Disattiva audio'}
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
           <button className="hud-btn" onClick={() => setSheet('shop')}>
             Shop
           </button>

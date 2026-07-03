@@ -75,6 +75,14 @@ Terza incrementale, **la più incompleta delle tre**: due dei tre item della roa
 - **Non implementato: un format giocabile per la bacheca** (karaoke/quiz). È un minigioco vero e proprio — esplicitamente fuori scope nell'handoff originale di Fase 1, la stessa linea che ha già escluso il trading. La bacheca oggi è solo informativa.
 - **Non implementato: la notifica intelligente** ("i tuoi amici sono al bar"). Richiede un'infrastruttura Web Push (VAPID, service worker con push handler, storage delle subscription) che non esiste, con differenze di supporto reali tra iOS/Android/desktop da testare con cura — merita un giro dedicato invece di un'implementazione affrettata.
 
+## Rifinitura post-lancio — bug reale, grafica, suoni
+
+Dopo il primo deploy in produzione: segnalato un bug concreto ("compro un arredo e non è quello che ottengo piazzato") più un giudizio generale su grafica/audio scarni.
+
+- **Bug fix: anteprima shop ≠ arredo reale**. Lo shop/inventario mostravano un'emoji generica scollegata dal disegno vero (`SPRITE_EMOJI`, es. 🍷 per un tavolino tondo) — da qui la percezione "compro X, ottengo Y". Corretto strutturalmente in `apps/web/src/game/preview.ts`: l'anteprima è ora un PNG renderizzato dalla **stessa** funzione `drawFurniture()` usata per disegnare l'arredo nella stanza (via un'`Application` PixiJS headless condivisa + `renderer.extract.base64()`, cacheata per `sprite_key`), quindi shop e stanza non possono più divergere per costruzione. Nota tecnica: le richieste concorrenti per lo stesso `sprite_key` sono deduplicate con una mappa `inFlight`, necessaria per via del doppio mount di React StrictMode in sviluppo (senza dedup, la richiesta "buona" restava in coda dietro tutte le altre invece di risolversi insieme alla prima).
+- **Grafica**: contorni sottili su tutte le forme dell'avatar (leggibilità migliore su sfondo chiaro), due mensole bottiglie e un quadro a parete come arredo fisso della stanza (`drawBottleShelf`/`drawWallFrame` in `sprites.ts`) per rompere la sensazione di stanza vuota.
+- **Suoni**: effetti sintetizzati via Web Audio (`apps/web/src/game/sound.ts`) — nessun asset esterno scaricato (stesso vincolo di sandbox già documentato per la grafica). Toni brevi generati con oscillatori + inviluppo per chat inviata/ricevuta, Chicchi guadagnati, acquisto, badge, emote, sedersi, errore. L'`AudioContext` si crea solo al primo gesto dell'utente (policy autoplay dei browser). Toggle 🔊/🔇 in HUD, stato persistito in `localStorage`.
+
 ## Setup locale
 
 Prerequisiti: Node 22+, npm 10+.

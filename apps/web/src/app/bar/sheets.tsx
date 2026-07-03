@@ -4,10 +4,37 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AVATAR_COLOR_SCHEMES, type ChatEntry, type DailyGoalsSnapshot, type EventoGiorno } from '@barlandia/shared';
 import { AVATAR_COLORS } from '@/game/palette';
-import { SPRITE_EMOJI } from '@/game/sprites';
 
 function hex(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * Anteprima di un arredo: STESSO disegno usato nella stanza (mai
+ * un'emoji scollegata che può non assomigliare al render reale — vedi
+ * game/preview.ts).
+ */
+function FurniturePreview({ spriteKey }: { spriteKey: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('@/game/preview')
+      .then(({ renderFurniturePreview }) => renderFurniturePreview(spriteKey))
+      .then((url) => {
+        if (!cancelled) setSrc(url);
+      })
+      .catch((e) => console.error('anteprima arredo fallita', spriteKey, e));
+    return () => {
+      cancelled = true;
+    };
+  }, [spriteKey]);
+
+  return (
+    <div className="shop-emoji">
+      {src && <img src={src} alt="" className="shop-preview-img" />}
+    </div>
+  );
 }
 
 export function Sheet({
@@ -149,7 +176,7 @@ export function ShopSheet({
         <div className="shop-grid">
           {items.map((item) => (
             <div className="shop-card" key={item.id}>
-              <div className="shop-emoji">{SPRITE_EMOJI[item.spriteKey] ?? '📦'}</div>
+              <FurniturePreview spriteKey={item.spriteKey} />
               <div className="shop-name">{item.name}</div>
               <button
                 className="shop-buy"
@@ -218,7 +245,7 @@ export function InventorySheet({
         <div className="shop-grid">
           {items.map((item) => (
             <div className="shop-card" key={item.id}>
-              <div className="shop-emoji">{SPRITE_EMOJI[item.spriteKey] ?? '📦'}</div>
+              <FurniturePreview spriteKey={item.spriteKey} />
               <div className="shop-name">{item.name}</div>
               {item.isPlaced ? (
                 <button className="shop-buy secondary" onClick={() => onPickup(item)}>

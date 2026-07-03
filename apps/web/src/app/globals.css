@@ -228,6 +228,12 @@ input {
   background: var(--terracotta);
 }
 
+.hud-btn-icon {
+  padding: 8px 12px;
+  font-size: 16px;
+  line-height: 1;
+}
+
 /* banner modalità piazzamento */
 .placement-hint {
   position: absolute;
@@ -490,8 +496,16 @@ input {
 }
 
 .shop-emoji {
-  font-size: 34px;
-  line-height: 1.2;
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shop-preview-img {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .shop-name {
